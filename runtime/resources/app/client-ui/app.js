@@ -78,6 +78,7 @@ function renderCards(){
 }
 function render(s){
  const old=current;current=s;
+ $('stream-transition').hidden=!ACTIVE.has(s.state);setText('transition-title',s.session?.game?.name||selected()?.name||'Your PC');setText('transition-description',s.state==='RECONNECTING'?'Restoring your connection…':s.state==='STREAMING'?'Your game is ready. Enjoy.':'Preparing your handheld session…');
  setText('status',labels[s.state]||'Checking');$('status-dot').className='status-dot '+(s.state==='READY'||s.state==='STREAMING'?'online':s.hostOnline?'attention':'');
  setText('connection-detail',s.trusted?(s.state==='READY'?'Linked to Zeiron. Ready to play.':s.reason||'Your device is linked to Zeiron.'):s.reason||'Link Zeiron once to play your PC games.');
  setText('pc-description',s.state==='READY'?'Linked, online, and ready when you are.':s.reason||'Your connected PC, within reach.');
@@ -130,7 +131,7 @@ function startLink(){setText('pair-code','…');setText('pair-wait','Preparing y
 function cancelLink(){setText('pair-code','');$('link-dialog').close();window.orbit.cancelLink().catch(e=>toast(e.message));}
 function switchView(next){view=next;$('library-view').hidden=next!=='library';$('pc-view').hidden=next!=='pc';for(const name of ['library','pc']){$('tab-'+name).classList.toggle('active',name===next);$('tab-'+name).setAttribute('aria-pressed',String(name===next));}}
 function setFilter(next){filter=next;for(const name of ['games','xbox','steam','apps']){$('filter-'+name).classList.toggle('active',name===next);$('filter-'+name).setAttribute('aria-pressed',String(name===next));}renderCards();}
-$('play').onclick=playSelected;$('desktop').onclick=()=>action(()=>window.orbit.stream('desktop'));$('pc-desktop').onclick=$('desktop').onclick;$('steam').onclick=()=>action(()=>window.orbit.stream('steam'));$('disconnect').onclick=()=>action(()=>window.orbit.disconnect());
+$('play').onclick=playSelected;$('desktop').onclick=()=>action(()=>window.orbit.stream('desktop'));$('pc-desktop').onclick=$('desktop').onclick;$('steam').onclick=()=>action(()=>window.orbit.stream('steam'));$('disconnect').onclick=()=>action(()=>window.orbit.disconnect());$('transition-cancel').onclick=$('disconnect').onclick;
 $('tab-library').onclick=()=>switchView('library');$('tab-pc').onclick=()=>switchView('pc');
 for(const name of ['games','xbox','steam','apps'])$('filter-'+name).onclick=()=>setFilter(name);
 $('search').oninput=renderCards;$('refresh-library').onclick=()=>loadLibrary(true);$('retry').onclick=()=>loadLibrary(true);

@@ -94,9 +94,12 @@ class GameLibrary{
    if(!profile||typeof profile!=='object')continue;
    if(profile.provider!=='Emulation'||typeof profile.name!=='string'||profile.name.length>200||typeof profile.root!=='string'||!path.isAbsolute(profile.root))continue;
    const exe=inside(profile.root,profile.executable),rom=inside(profile.root,profile.rom),data=inside(profile.root,profile.dataDirectory);
-   if(!exe||!rom||!data||!/^Ryujinx\.exe$/i.test(path.basename(exe))||! /\.(?:nsp|xci)$/i.test(rom)||!fs.statSync(data).isDirectory())continue;
-   const id='local:'+hash(exe+'|'+rom);
-   records.set(id,{id,name:profile.name,provider:'Emulation',kind:'game',installed:true,launchable:true,artFile:inside(profile.root,profile.artwork),launch:{type:'local',exe,cwd:path.dirname(exe),args:['-r',data,'--fullscreen',rom]}});
+   if(!exe||!rom||!data||! /\.(?:nsp|xci)$/i.test(rom)||!fs.statSync(data).isDirectory())continue;
+   const ryujinx=/^Ryujinx\.exe$/i.test(path.basename(exe)),yuzu=/^yuzu(?:_ea|_preview)?\.exe$/i.test(path.basename(exe));
+   if(!ryujinx&&!yuzu)continue;
+   if(yuzu&&path.resolve(data)!==path.join(path.dirname(exe),'user'))continue;
+   const id=typeof profile.id==='string'&&/^local:[a-f0-9]{64}$/.test(profile.id)?profile.id:'local:'+hash(profile.root+'|'+rom);
+   records.set(id,{id,name:profile.name,provider:'Emulation',kind:'game',installed:true,launchable:true,artFile:inside(profile.root,profile.artwork),launch:{type:'local',exe,cwd:path.dirname(exe),args:ryujinx?['-r',data,'--fullscreen',rom]:['-f','-g',rom]}});
   }
   this.records=new Map([...records].slice(0,500));
   if(this.artworkCache)await this.artworkCache.prepare(this.records);

@@ -7,11 +7,11 @@ const {SessionManager}=require('./host-sessions.cjs');
 const {SystemObserver}=require('./system-observer.cjs');
 const {GameLibrary,GameLaunchManager}=require('./game-library.cjs');
 class HostService{
- constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null,display,library=new GameLibrary(),launcher=new GameLaunchManager()}){
+ constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null,display,graphics,library=new GameLibrary(),launcher=new GameLaunchManager()}){
   this.backend=backend;this.registry=registry;this.port=port;this.clock=clock;
   this.server=null;this.fp=null;this.timer=null;this.expiring=false;
   this.devices=new DeviceManager({registry,clock});
-  this.library=library;this.sessions=new SessionManager({backend,clock,journal,display,library,launcher});this.system=new SystemObserver();
+  this.library=library;this.sessions=new SessionManager({backend,clock,journal,display,graphics,library,launcher});this.system=new SystemObserver();
  }
  async start(){
   if(this.server)return;

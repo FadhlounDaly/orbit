@@ -41,9 +41,9 @@ class StreamObserver {
   }
 }
 class SessionManager {
-  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend),library=null,launcher=null}){
+  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend),library=null,launcher=null,graphics=null}){
     this.backend=backend;this.clock=clock;this.journal=journal;this.display=display;this.observer=observer;
-    this.library=library;this.launcher=launcher;
+    this.library=library;this.launcher=launcher;this.graphics=graphics;
     this.state='IDLE';this.current=null;this.error=null;this.tail=Promise.resolve();
   }
   serial(fn){const job=this.tail.then(fn);this.tail=job.catch(()=>{});return job;}
@@ -88,7 +88,10 @@ class SessionManager {
     this.error=null;this.move('PREPARING');
     try{
       this.current.previousSystemState=await this.display.snapshot();this.save();
-      this.move('CONFIGURING_DISPLAY');await this.display.prepare(STREAM_PROFILES[profile]);
+      this.move('CONFIGURING_DISPLAY');const configured=await this.display.prepare(STREAM_PROFILES[profile]);
+      const [width,height]=STREAM_PROFILES[profile].resolution.split('x').map(Number);
+      this.current.displayMode=configured?.mode||{width,height};
+      if(game&&this.graphics){this.current.previousGameSettings=await this.graphics.snapshot(game,this.current.displayMode);this.save();await this.graphics.prepare(this.current.previousGameSettings);}
       this.move('PREPARING_STREAM');
       const status=await this.backend.status();
       if(!status.running||status.healthy===false||!status.apps.some(a=>a.name===target.target))throw Error('This session is not ready on Zeiron');
@@ -125,7 +128,11 @@ class SessionManager {
     this.error=reason;this.move('ENDING');this.move('RESTORING');await this.restore();
   }
   async restore(){
-    try{await this.display.restore(this.current?.previousSystemState);this.current=null;this.move('IDLE');}
+    try{
+      const errors=[];try{await this.graphics?.restore(this.current?.previousGameSettings);}catch(e){errors.push(e.message);}
+      try{await this.display.restore(this.current?.previousSystemState);}catch(e){errors.push(e.message);}
+      if(errors.length)throw Error(errors.join('; '));this.current=null;this.move('IDLE');
+    }
     catch(error){this.error='Restoration failed: '+error.message;this.move('ERROR');throw conflict(this.error);}
   }
   async shutdown(){return this.serial(()=>this.endInternal('host-stopped'));}

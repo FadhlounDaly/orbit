@@ -54,3 +54,5 @@ Electron 44.5.1 and Moonlight 6.2.0 are portable official releases with verified
 D-pad/stick moves focus; A plays the focused game or activates a control; B backs out; X opens search; Y refreshes the library; LB/RB switches Library/Your PC; Menu opens settings. Touch selects a cover, then Play starts it. Arrow keys and Enter also work.
 
 The library comes from Zeiron, including registered Xbox PC titles, Steam, and supported standalone PC games. Xbox games without a valid Windows registration are marked for host setup. Emulators, ambiguous executables, and installers are not automatically treated as game launch targets. Other launcher providers are not currently imported.
+
+During play, tap the top-right **Orbit · Menu** badge. **Resume** returns to the game; **End stream** closes Orbit’s streaming process and returns to the library while leaving the game open on Zeiron. With the menu focused, controller **B** resumes and **A** ends the stream; the streaming window receives gamepad input while it has focus. Keyboard shortcut: **Ctrl+Alt+O**. The badge does not take focus during normal play.

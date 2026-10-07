@@ -119,3 +119,9 @@ test('local game launch uses normal user permissions and never invokes an elevat
  await assert.rejects(launcher.launch({id:'local:'+'d'.repeat(64),name:'Example',launchable:true,launch:{type:'local',exe,cwd:root}}),/administrator approval/);
  assert.equal(options.env.__COMPAT_LAYER,'RunAsInvoker');assert.equal(fallback,false);
 });
+test('Yuzu Early Access profiles retain their portable data and stable opaque game ID',async t=>{
+ const root=fixture(t),profilesFile=path.join(root,'profiles.json');write(path.join(root,'yuzu_ea.exe'));write(path.join(root,'games/Zelda.nsp'));fs.mkdirSync(path.join(root,'user'));
+ const id='local:'+'e'.repeat(64);write(profilesFile,JSON.stringify({games:[{id,name:'Zelda',provider:'Emulation',root,executable:'yuzu_ea.exe',rom:'games/Zelda.nsp',dataDirectory:'user'}]}));
+ const library=new GameLibrary({profilesFile,catalog:async()=>({packages:[]}),roots:()=>[]});const list=await library.list();assert.equal(list.games[0].id,id);assert.equal(JSON.stringify(list).includes(root),false);assert.deepEqual((await library.resolve(id)).launch.args,['-f','-g',path.join(root,'games/Zelda.nsp')]);
+ write(profilesFile,JSON.stringify({games:[{id,name:'Zelda',provider:'Emulation',root,executable:'yuzu_ea.exe',rom:'games/Zelda.nsp',dataDirectory:'games'}]}));await assert.rejects(library.resolve(id),/unavailable/);
+});
