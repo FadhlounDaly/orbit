@@ -11,62 +11,95 @@ function fixture(t){
   isEncryptionAvailable:()=>true,encryptString:s=>Buffer.from(s),decryptString:b=>b.toString()});
  return {root,registry};
 }
-function handshake(manager,code,clientId=crypto.randomUUID()){
- const first=manager.begin({clientId});
- const client=new SrpClient(SRP.params.hap,Buffer.from(first.salt,'hex'),Buffer.from(clientId),Buffer.from(code),crypto.randomBytes(32));
- client.setB(Buffer.from(first.B,'hex'));
+function handshake(manager,code,entered=code,clientId=crypto.randomUUID()){
+ const first=manager.request({clientId},'192.168.1.186');
+ manager.approve({challenge:first.challenge,code:entered});
+ const approval=manager.poll({challenge:first.challenge},'192.168.1.186');
+ const client=new SrpClient(SRP.params.hap,Buffer.from(approval.salt,'hex'),Buffer.from(clientId),Buffer.from(code),crypto.randomBytes(32));
+ client.setB(Buffer.from(approval.B,'hex'));
  return {first,client,body:{challenge:first.challenge,A:client.computeA().toString('hex'),M1:client.computeM1().toString('hex')}};
 }
-test('eight-digit code is bootstrap only; credentials never appear in public device metadata',async t=>{
- const {registry}=fixture(t),manager=new DeviceManager({registry}),invitation=manager.generate();
- assert.match(invitation.code,/^\d{8}$/);
- const id=crypto.randomUUID(),fp='a'.repeat(64);let checks=0;
+test('handheld four-digit code requires local host entry and issues an independent credential',async t=>{
+ const {registry}=fixture(t),manager=new DeviceManager({registry});const id=crypto.randomUUID(),fp='a'.repeat(64);let code,checks=0;
  const request=async args=>{
-  if(args.endpoint==='/enrollment/begin')return manager.begin(args.body);
+  assert.equal(Object.hasOwn(args.body||{},'code'),false);
+  if(args.endpoint==='/enrollment/request')return manager.request(args.body,'192.168.1.186');
+  if(args.endpoint==='/enrollment/poll')return manager.poll(args.body,'192.168.1.186');
+  if(args.endpoint==='/enrollment/cancel')return manager.cancelRequest(args.body,'192.168.1.186');
   if(args.endpoint==='/enrollment/finish'){
-   const response=manager.finish(args.body,fp);
+   const response=manager.finish(args.body,fp,'192.168.1.186');
    assert.equal(JSON.stringify(response).includes(registry.data.client.token),false);return response;
   }
   assert.equal(args.fp,fp);assert.equal(args.token,registry.data.client.token);checks++;return {};
  };
- const value=await enroll({code:invitation.code,clientId:id,address:'192.168.1.26',request});
- assert.equal(checks,1);assert.equal(value.token.length,43);assert.notEqual(value.token,invitation.code);
- assert.equal(manager.invite,null);assert.equal(manager.pending.size,0);
- assert.equal(JSON.stringify(manager.list()).includes(value.token),false);
+ const value=await enroll({clientId:id,address:'192.168.1.26',request,onCode:p=>{
+  code=p.code;assert.match(code,/^\d{4}$/);assert.equal(registry.data.client,null);
+  assert.equal(manager.poll({challenge:manager.pending.challenge},'192.168.1.186').state,'WAITING');
+  manager.approve({challenge:manager.pending.challenge,code});
+ }});
+ assert.equal(checks,1);assert.equal(value.token.length,43);assert.notEqual(value.token,code);
+ assert.equal(manager.pending,null);assert.equal(JSON.stringify(manager.list()).includes(value.token),false);
  assert.ok(manager.authenticate('Bearer '+value.token));manager.revoke(id);
  assert.equal(manager.authenticate('Bearer '+value.token),null);
 });
-test('wrong code, zero public value, replay, regenerated and expired challenges fail closed',t=>{
+test('unapproved, wrong code, zero public value, replay and expired requests fail closed',t=>{
  const {registry}=fixture(t);let now=0;const manager=new DeviceManager({registry,clock:()=>now});
- const invitation=manager.generate(),wrong=handshake(manager,invitation.code==='00000000'?'00000001':'00000000');
- assert.throws(()=>manager.finish(wrong.body,'a'.repeat(64)));assert.equal(registry.data.client,null);
- assert.throws(()=>manager.finish(wrong.body,'a'.repeat(64)));
- const zero=handshake(manager,invitation.code);zero.body.A='0'.repeat(768);
- assert.throws(()=>manager.finish(zero.body,'a'.repeat(64)));assert.equal(registry.data.client,null);
- const regenerated=handshake(manager,invitation.code);manager.generate();
- assert.throws(()=>manager.finish(regenerated.body,'a'.repeat(64)));
- const expired=handshake(manager,manager.invite.code);now=300001;
- assert.throws(()=>manager.finish(expired.body,'a'.repeat(64)));
- assert.throws(()=>manager.begin({clientId:crypto.randomUUID()}));
+ registry.trustClient({id:crypto.randomUUID(),token:'original'});
+ let first=manager.request({clientId:crypto.randomUUID()},'192.168.1.186');
+ assert.throws(()=>manager.finish({challenge:first.challenge,A:'0'.repeat(768),M1:'0'.repeat(128)},'a'.repeat(64),'192.168.1.186'),/first/);
+ manager.cancel();
+ const wrong=handshake(manager,'1234','4321');
+ assert.throws(()=>manager.finish(wrong.body,'a'.repeat(64),'192.168.1.186'),/codes did not match/);
+ assert.equal(registry.data.client.token,'original');assert.throws(()=>manager.finish(wrong.body,'a'.repeat(64),'192.168.1.186'));
+ const zero=handshake(manager,'1234');zero.body.A='0'.repeat(768);
+ assert.throws(()=>manager.finish(zero.body,'a'.repeat(64),'192.168.1.186'));
+ now=60000;first=manager.request({clientId:crypto.randomUUID()},'192.168.1.186');now=180001;
+ assert.throws(()=>manager.approve({challenge:first.challenge,code:'1234'}));
+ assert.equal(registry.data.client.token,'original');
 });
-test('rate limit is host-wide and regenerating a code does not reset it',t=>{
+test('rate limit is host-wide and cancelling a request does not reset it',t=>{
  const {registry}=fixture(t),manager=new DeviceManager({registry});
- for(let i=0;i<5;i++){manager.generate();manager.begin({clientId:crypto.randomUUID()});}
- manager.generate();assert.throws(()=>manager.begin({clientId:crypto.randomUUID()}),e=>e.status===429);
+ for(let i=0;i<3;i++){manager.request({clientId:crypto.randomUUID()},'192.168.1.186');manager.cancel();}
+ assert.throws(()=>manager.request({clientId:crypto.randomUUID()},'192.168.1.187'),e=>e.status===429);
 });
-test('invalid server proof and changed TLS identity never complete enrollment',async t=>{
+test('only one request is pending; local entry cannot be overwritten; source and expiration are enforced',t=>{
+ const {registry}=fixture(t);let now=0;const manager=new DeviceManager({registry,clock:()=>now});
+ const first=manager.request({clientId:crypto.randomUUID()},'192.168.1.186');
+ assert.throws(()=>manager.request({clientId:crypto.randomUUID()},'192.168.1.187'),e=>e.status===409);
+ assert.throws(()=>manager.poll({challenge:first.challenge},'192.168.1.187'));
+ assert.throws(()=>manager.approve({challenge:first.challenge,code:'12345678'}));
+ manager.approve({challenge:first.challenge,code:'0123'});
+ assert.throws(()=>manager.approve({challenge:first.challenge,code:'4567'}));
+ now=30001;assert.throws(()=>manager.poll({challenge:first.challenge},'192.168.1.186'));
+ assert.equal(manager.pending,null);
+});
+test('invalid server proof, selected identity mismatch and changed TLS identity never complete enrollment',async t=>{
  const {registry}=fixture(t),manager=new DeviceManager({registry});let mode='proof';
  const request=async args=>{
-  if(args.endpoint==='/enrollment/begin')return manager.begin(args.body);
+  if(args.endpoint==='/enrollment/request')return manager.request(args.body,'192.168.1.186');
+  if(args.endpoint==='/enrollment/poll')return manager.poll(args.body,'192.168.1.186');
+  if(args.endpoint==='/enrollment/cancel')return manager.cancelRequest(args.body,'192.168.1.186');
   if(args.endpoint==='/enrollment/finish'){
-   const reply=manager.finish(args.body,'a'.repeat(64));if(mode==='proof')reply.M2='0'.repeat(128);return reply;
+   const reply=manager.finish(args.body,'a'.repeat(64),'192.168.1.186');if(mode==='proof')reply.M2='0'.repeat(128);return reply;
   }
   throw Error('Zeiron identity changed');
  };
- let code=manager.generate().code;
- await assert.rejects(enroll({code,clientId:crypto.randomUUID(),address:'192.168.1.26',request}),/not authentic/);
- mode='pin';code=manager.generate().code;
- await assert.rejects(enroll({code,clientId:crypto.randomUUID(),address:'192.168.1.26',request}),/identity changed/);
+ const attempt=expectedId=>enroll({clientId:crypto.randomUUID(),address:'192.168.1.26',expectedId,request,
+  onCode:p=>manager.approve({challenge:manager.pending.challenge,code:p.code})});
+ await assert.rejects(attempt(),/not authentic/);
+ mode='identity';await assert.rejects(attempt(crypto.randomUUID()),/selected host/);
+ mode='pin';await assert.rejects(attempt(),/identity changed/);
+});
+test('client cancellation clears the request without replacing existing trust',async t=>{
+ const {registry}=fixture(t),manager=new DeviceManager({registry});registry.trustClient({id:crypto.randomUUID(),token:'original'});
+ const controller=new AbortController();
+ const request=async args=>{
+  if(args.endpoint==='/enrollment/request')return manager.request(args.body,'192.168.1.186');
+  if(args.endpoint==='/enrollment/cancel')return manager.cancelRequest(args.body,'192.168.1.186');
+  throw Error('No further enrollment request expected');
+ };
+ await assert.rejects(enroll({clientId:crypto.randomUUID(),address:'192.168.1.26',request,signal:controller.signal,onCode:()=>controller.abort()}),e=>e.name==='AbortError');
+ assert.equal(manager.pending,null);assert.equal(registry.data.client.token,'original');
 });
 function sessions(t,options={}){
  const {root}=fixture(t),log=path.join(root,'stream.log');fs.writeFileSync(log,'CLIENT CONNECTED\n');

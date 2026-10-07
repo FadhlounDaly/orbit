@@ -25,7 +25,7 @@ class PinnedAgent extends https.Agent {
   });
  }
 }
-function request({address,fp,token,endpoint,method='GET',body,port=CONTROL_PORT,discovery=false}){
+function request({address,fp,token,endpoint,method='GET',body,port=CONTROL_PORT,discovery=false,timeoutMs,signal,maxResponseBytes=65536}){
  return new Promise((resolve,reject)=>{
   if(!isPrivate(address))return reject(Error('Local network address required'));
   const agent=discovery?new https.Agent({rejectUnauthorized:false}):new PinnedAgent(fp);
@@ -33,16 +33,18 @@ function request({address,fp,token,endpoint,method='GET',body,port=CONTROL_PORT,
   const headers={Accept:'application/json'};
   if(token)headers.Authorization='Bearer '+token;
   if(bytes){headers['Content-Type']='application/json';headers['Content-Length']=Buffer.byteLength(bytes);}
-  const req=https.request({hostname:address,port,path:endpoint,method,agent,headers},res=>{
+  const req=https.request({hostname:address,port,path:endpoint,method,agent,headers,signal},res=>{
    let text='';
-   res.on('data',b=>{text+=b;if(text.length>65536)req.destroy(Error('Host response too large'));});
+   res.on('data',b=>{text+=b;if(Buffer.byteLength(text)>Math.min(maxResponseBytes,16*1024*1024))req.destroy(Error('Host response too large'));});
    res.on('end',()=>{agent.destroy();try{
     const data=JSON.parse(text);
     if(res.statusCode>=400){const e=Error(data.error||'Zeiron rejected the request');e.code=data.code;e.status=res.statusCode;return reject(e);}
     resolve(data);
    }catch(e){reject(e);}});
   });
-  req.setTimeout(discovery?1600:method==='POST'?45000:5000,()=>req.destroy(Error('Zeiron did not respond')));
+  const timeout=timeoutMs||(discovery?1600:method==='POST'?45000:5000);
+  const deadline=setTimeout(()=>req.destroy(Error('Zeiron did not respond')),timeout);
+  req.once('close',()=>clearTimeout(deadline));
   req.on('error',e=>{agent.destroy();reject(e);});req.end(bytes);
  });
 }

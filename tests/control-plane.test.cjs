@@ -70,7 +70,7 @@ test('device registry survives restart without changing device identity',t=>{
  assert.equal(reload.data.device.id,registry.data.device.id);
 });
 let openssl=false;try{execFileSync('openssl',['version'],{stdio:'ignore'});openssl=true;}catch{}
-test('TLS pinning rejects a changed certificate before transmitting authorization; invitations are single-use', {skip:!openssl},async t=>{
+test('TLS pinning rejects a changed certificate before transmitting authorization; locally approved handheld linking is single-use', {skip:!openssl},async t=>{
  const {root,registry}=fixture(t,'host');const key=path.join(root,'key.pem'),cert=path.join(root,'cert.pem');
  execFileSync('openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,'-subj','/CN=Orbit Test','-days','1'],{stdio:'ignore'});
  const log=path.join(root,'backend.log');fs.writeFileSync(log,'');
@@ -78,17 +78,20 @@ test('TLS pinning rejects a changed certificate before transmitting authorizatio
  const service=new HostService({backend,registry,port:0});
  await service.start();t.after(()=>service.stop());
  const port=service.server.address().port;let receivedAuthorization=false;
+ await assert.rejects(request({address:'127.0.0.1',port,fp:service.fp,endpoint:'/library'}),e=>e.status===401);
  service.server.prependListener('request',req=>{if(req.headers.authorization)receivedAuthorization=true;});
  await assert.rejects(request({address:'127.0.0.1',port,fp:'0'.repeat(64),token:'DO-NOT-SEND',endpoint:'/status'}),/identity changed/);
  assert.equal(receivedAuthorization,false);
- const invitation=service.invitation();
- const clientId=crypto.randomUUID();
+  const clientId=crypto.randomUUID();
  const call=args=>request({...args,port});
- const linked=await enroll({address:'127.0.0.1',code:invitation.code,clientId,request:call});
+ const linked=await enroll({address:'127.0.0.1',clientId,request:call,onCode:p=>service.approvePairing({challenge:service.devices.pending.challenge,code:p.code})});
  assert.equal(linked.id,registry.data.device.id);
- await assert.rejects(enroll({address:'127.0.0.1',code:invitation.code,clientId,request:call}));
+ assert.throws(()=>service.devices.finish({challenge:'consumed'},linked.fp,'127.0.0.1'));
  const status=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/status'});
  assert.deepEqual(status.sessions,[{id:'desktop',name:'Desktop'}]);
+ const library=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/library'});assert.equal(library.version,1);
+ await assert.rejects(request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/library/game?id=calc.exe'}),e=>e.status===400);
+ await assert.rejects(request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'desktop',gameId:'calc.exe'}}),e=>e.status===400);
  await assert.rejects(request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'calc.exe'}}));
  const lease=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'desktop'}});
  fs.appendFileSync(log,'CLIENT CONNECTED\n');
@@ -141,4 +144,42 @@ test('disconnect during an in-flight reconnect cannot restart the stream',async 
  const retry=jobs.pop()();
  await c.disconnect();release();await retry;
  assert.equal(c.machine.state,'READY');assert.equal(starts(),1);
+});
+
+test('healthy polling stays READY, emits no discovery pulses, and does not repeatedly invoke streaming trust checks',async t=>{
+ const seen=[];let lists=0;const {c,adapter}=client(t,{notify:s=>seen.push(s.state)});const list=adapter.list;
+ adapter.list=async(...args)=>{lists++;return list(...args);};
+ await c.refresh();seen.length=0;
+ await c.refresh();await c.refresh();assert.equal(c.machine.state,'READY');assert.deepEqual(seen,[]);assert.equal(lists,1);
+ c.request=async()=>{throw Object.assign(Error('Zeiron did not respond'),{code:'ETIMEDOUT'});};
+ assert.equal((await c.refresh()).state,'OFFLINE');assert.equal(c.hostOnline,false);
+});
+test('handheld sends a known game ID through the existing host session API and streams the host-selected target',async t=>{
+ const requests=[];const {c}=client(t);const original=c.request;
+ c.request=async args=>{requests.push(args);return original(args);};
+ await c.play('steam:123');const start=requests.find(r=>r.endpoint==='/sessions/start');
+ assert.equal(start.body.gameId,'steam:123');assert.equal(start.body.intent,'desktop');assert.equal(Object.hasOwn(start.body,'executable'),false);
+ await c.disconnect();await assert.rejects(c.play('C:\\Windows\\System32\\calc.exe'),/Choose a game/);
+});
+test('game library uses pinned authenticated transport, caches responses, and preserves client state',async t=>{
+ let calls=0;const {c}=client(t);const original=c.request;
+ c.request=async args=>{if(args.endpoint.startsWith('/library')){assert.equal(args.fp,fp);assert.equal(args.token,token);calls++;return {version:1,games:[]};}return original(args);};
+ await c.refresh();await c.library();await c.library();assert.equal(calls,1);await c.library({force:true});assert.equal(calls,2);assert.equal(c.machine.state,'READY');
+});
+
+test('an online host warming its stream stays visually steady and then recovers to READY',async t=>{
+ const seen=[];let ready=false;const {c}=client(t,{notify:s=>seen.push(s.state),request:async({endpoint})=>{
+  if(endpoint==='/identity')return {version:1,id:hostId,role:'host'};
+  return {online:true,ready,sessions:[{id:'desktop',name:'Desktop'}]};
+ }});
+ assert.equal((await c.refresh()).state,'ERROR');assert.equal(c.hostOnline,true);seen.length=0;
+ await c.refresh();await c.refresh();assert.deepEqual(seen,[]);
+ ready=true;assert.equal((await c.refresh()).state,'READY');assert.equal(seen.includes('DISCOVERING'),false);
+});
+
+test('a failed stream runtime ends the host lease before another Play attempt',async t=>{
+ const calls=[];const {c,adapter}=client(t);const original=c.request;
+ c.request=async args=>{calls.push(args);return original(args);};adapter.start=()=>{throw Error('runtime failed');};
+ await assert.rejects(c.play('steam:123'),/runtime failed/);assert.equal(c.session,null);
+ assert.equal(calls.find(r=>r.endpoint==='/sessions/end').body.id,'lease');assert.equal(c.machine.state,'ERROR');
 });

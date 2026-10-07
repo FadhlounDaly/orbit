@@ -8,7 +8,7 @@ function bytes(value, length) {
   return Buffer.from(value, 'hex');
 }
 function key(shared, challenge) {
-  return Buffer.from(crypto.hkdfSync('sha256', shared, Buffer.from(challenge), Buffer.from('Orbit enrollment v2'), 32));
+  return Buffer.from(crypto.hkdfSync('sha256', shared, Buffer.from(challenge), Buffer.from('Orbit enrollment v3'), 32));
 }
 function seal(shared, challenge, value) {
   const iv=crypto.randomBytes(12), cipher=crypto.createCipheriv('aes-256-gcm',key(shared,challenge),iv);
@@ -24,38 +24,55 @@ function open(shared, challenge, value) {
 }
 class DeviceManager {
   constructor({registry,clock=Date.now}) {
-    this.registry=registry;this.clock=clock;this.invite=null;this.pending=new Map();
+    this.registry=registry;this.clock=clock;this.pending=null;
     this.window={at:clock(),count:0};
   }
-  generate() {
-    this.pending.clear();
-    this.invite={code:String(crypto.randomInt(100000000)).padStart(8,'0'),expires:this.clock()+300000,attempts:0};
-    return {code:this.invite.code,expires:this.invite.expires};
-  }
-  cancel() {this.invite=null;this.pending.clear();}
-  begin({clientId}) {
-    const now=this.clock();
+  prune(){if(this.pending&&this.clock()>=this.pending.expires)this.pending=null;}
+  cancel(){this.pending=null;}
+  request({clientId},address){
+    const now=this.clock();this.prune();
     if(now-this.window.at>=60000)this.window={at:now,count:0};
-    if(++this.window.count>5)throw Object.assign(Error('Linking paused. Try again in a minute.'),{status:429});
-    if(!UUID.test(clientId||'') || !this.invite || now>=this.invite.expires || ++this.invite.attempts>10)throw Error('Pairing code is invalid or expired');
-    for(const [id,p] of this.pending)if(now>=p.expires)this.pending.delete(id);
-    if(this.pending.size>=3)throw Object.assign(Error('A pairing operation is already pending'),{status:429});
-    const salt=crypto.randomBytes(32),challenge=crypto.randomUUID();
-    const server=new SrpServer(params,salt,Buffer.from(clientId),Buffer.from(this.invite.code),crypto.randomBytes(32));
-    this.pending.set(challenge,{server,clientId,expires:Math.min(now+30000,this.invite.expires),invite:this.invite});
-    return {version:2,challenge,salt:salt.toString('hex'),B:server.computeB().toString('hex')};
+    if(++this.window.count>3)throw Object.assign(Error('Linking paused. Try again in a minute.'),{status:429});
+    if(!UUID.test(clientId||''))throw Error('Invalid client identity');
+    if(this.pending)throw Object.assign(Error('A linking request is already pending on Zeiron'),{status:409});
+    this.pending={challenge:crypto.randomUUID(),clientId,address,expires:now+120000,state:'WAITING'};
+    return {version:3,challenge:this.pending.challenge,expires:this.pending.expires};
   }
-  finish({challenge,A,M1}, fp) {
-    const p=this.pending.get(challenge);this.pending.delete(challenge);
-    if(!p || this.clock()>=p.expires || p.invite!==this.invite)throw Error('Pairing code is invalid or expired');
+  requests(){
+    this.prune();const p=this.pending;
+    return p?[{challenge:p.challenge,name:'Legion Go',address:p.address,expires:p.expires,state:p.state}]:[];
+  }
+  approve({challenge,code}){
+    this.prune();const p=this.pending;
+    if(!p||p.challenge!==challenge||p.state!=='WAITING')throw Error('This linking request is no longer waiting');
+    if(typeof code!=='string'||!/^\d{4}$/.test(code))throw Error('Enter the four-digit code shown on the Legion Go');
+    const salt=crypto.randomBytes(32);
+    p.server=new SrpServer(params,salt,Buffer.from(p.clientId),Buffer.from(code),crypto.randomBytes(32));
+    p.salt=salt.toString('hex');p.state='APPROVED';p.expires=Math.min(p.expires,this.clock()+30000);
+    return {approved:true};
+  }
+  get(challenge,address){
+    this.prune();const p=this.pending;
+    if(!p||p.challenge!==challenge||p.address!==address)throw Object.assign(Error('Linking request expired or was cancelled'),{status:410});
+    return p;
+  }
+  poll({challenge},address){
+    const p=this.get(challenge,address);
+    return {version:3,challenge:p.challenge,expires:p.expires,state:p.state,
+      ...(p.state==='APPROVED'?{salt:p.salt,B:p.server.computeB().toString('hex')}:{})};
+  }
+  cancelRequest({challenge},address){this.get(challenge,address);this.cancel();return {cancelled:true};}
+  finish({challenge,A,M1},fp,address){
+    const p=this.get(challenge,address);
+    if(p.state!=='APPROVED')throw Object.assign(Error('Enter the code in Orbit Host first'),{status:409});
+    // A local code entry permits exactly one proof attempt. Failure consumes the request.
+    this.cancel();
     try{p.server.setA(bytes(A,384));p.server.checkM1(bytes(M1,64));}
-    catch{throw Object.assign(Error('Pairing code is invalid or expired'),{status:403});}
+    catch{throw Object.assign(Error('The codes did not match. Start linking again on the Legion Go.'),{status:403});}
     const token=crypto.randomBytes(32).toString('base64url');
-    // Identity and TLS pin are authenticated inside the SRP-derived envelope.
     const payload=seal(p.server.computeK(),challenge,{id:this.registry.data.device.id,clientId:p.clientId,fp,token});
     this.registry.trustClient({id:p.clientId,token,createdAt:new Date(this.clock()).toISOString(),lastSeenAt:null,
       type:'handheld',credential:{kind:'bearer-256',issuedAt:new Date(this.clock()).toISOString()}});
-    this.cancel();
     return {M2:p.server.computeM2().toString('hex'),payload};
   }
   authenticate(header) {
@@ -78,19 +95,42 @@ class DeviceManager {
     this.registry.data.client=null;this.registry.save();this.cancel();
   }
 }
-async function enroll({code,clientId,address,request}) {
-  if(!/^\d{8}$/.test(code))throw Error('Enter the eight-digit code shown on Zeiron');
-  const call=(endpoint,body)=>request({address,endpoint,method:'POST',body,discovery:true});
-  const first=await call('/enrollment/begin',{clientId});
-  if(first.version!==2||!UUID.test(first.challenge||''))throw Error('Invalid enrollment response');
-  const client=new SrpClient(params,bytes(first.salt,32),Buffer.from(clientId),Buffer.from(code),crypto.randomBytes(32));
-  client.setB(bytes(first.B,384));
-  const reply=await call('/enrollment/finish',{challenge:first.challenge,A:client.computeA().toString('hex'),M1:client.computeM1().toString('hex')});
-  client.checkM2(bytes(reply.M2,64));
-  const value=open(client.computeK(),first.challenge,reply.payload);
-  if(value.clientId!==clientId||!UUID.test(value.id||'')||!/^[a-f0-9]{64}$/.test(value.fp||'')||!/^[A-Za-z0-9_-]{43}$/.test(value.token||''))throw Error('Invalid trusted-device credential');
-  // Do not persist trust until the authenticated identity matches the actual TLS peer.
-  await request({address,fp:value.fp,token:value.token,endpoint:'/status'});
-  return value;
+function delay(ms,signal){
+ return new Promise((resolve,reject)=>{
+  const abort=()=>{clearTimeout(timer);reject(Object.assign(Error('Linking cancelled'),{name:'AbortError'}));};
+  const timer=setTimeout(()=>{signal?.removeEventListener('abort',abort);resolve();},ms);
+  if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+ });
+}
+async function enroll({clientId,address,expectedId,request,onCode=()=>{},signal,wait=delay,clock=Date.now}) {
+  const code=String(crypto.randomInt(10000)).padStart(4,'0');
+  const call=(endpoint,body)=>request({address,endpoint,method:'POST',body,discovery:true,timeoutMs:5000,signal});
+  const first=await call('/enrollment/request',{clientId});
+  if(first.version!==3||!UUID.test(first.challenge||'')||!Number.isFinite(first.expires))throw Error('Update Orbit Host on Zeiron before linking');
+  const deadline=Math.min(clock()+120000,first.expires);
+  onCode({code,expires:deadline});
+  try{
+    let approval;
+    while(clock()<deadline){
+      if(signal?.aborted)throw Object.assign(Error('Linking cancelled'),{name:'AbortError'});
+      const reply=await call('/enrollment/poll',{challenge:first.challenge});
+      if(reply.version!==3||reply.challenge!==first.challenge)throw Error('Invalid enrollment response');
+      if(reply.state==='APPROVED'){approval=reply;break;}
+      if(reply.state!=='WAITING')throw Error('Invalid enrollment response');
+      await wait(750,signal);
+    }
+    if(!approval)throw Error('Linking code expired. Start linking again.');
+    const client=new SrpClient(params,bytes(approval.salt,32),Buffer.from(clientId),Buffer.from(code),crypto.randomBytes(32));
+    client.setB(bytes(approval.B,384));
+    const reply=await call('/enrollment/finish',{challenge:first.challenge,A:client.computeA().toString('hex'),M1:client.computeM1().toString('hex')});
+    client.checkM2(bytes(reply.M2,64));
+    const value=open(client.computeK(),first.challenge,reply.payload);
+    if(value.clientId!==clientId||!UUID.test(value.id||'')||(expectedId&&value.id!==expectedId)||!/^[a-f0-9]{64}$/.test(value.fp||'')||!/^[A-Za-z0-9_-]{43}$/.test(value.token||''))throw Error('Zeiron identity does not match the selected host');
+    await request({address,fp:value.fp,token:value.token,endpoint:'/status',signal});
+    return value;
+  }finally{
+    // Cancelling an unauthenticated pending request cannot revoke established device trust.
+    try{await request({address,endpoint:'/enrollment/cancel',method:'POST',body:{challenge:first.challenge},discovery:true,timeoutMs:1200});}catch{}
+  }
 }
 module.exports={DeviceManager,enroll};

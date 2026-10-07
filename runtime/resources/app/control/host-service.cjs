@@ -5,12 +5,13 @@ const {publicSessions}=require('./model.cjs');
 const {DeviceManager}=require('./devices.cjs');
 const {SessionManager}=require('./host-sessions.cjs');
 const {SystemObserver}=require('./system-observer.cjs');
+const {GameLibrary,GameLaunchManager}=require('./game-library.cjs');
 class HostService{
- constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null}){
+ constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null,library=new GameLibrary(),launcher=new GameLaunchManager()}){
   this.backend=backend;this.registry=registry;this.port=port;this.clock=clock;
   this.server=null;this.fp=null;this.timer=null;this.expiring=false;
   this.devices=new DeviceManager({registry,clock});
-  this.sessions=new SessionManager({backend,clock,journal});this.system=new SystemObserver();
+  this.library=library;this.sessions=new SessionManager({backend,clock,journal,library,launcher});this.system=new SystemObserver();
  }
  async start(){
   if(this.server)return;
@@ -25,7 +26,7 @@ class HostService{
   });
   this.timer=setInterval(async()=>{
    if(this.expiring)return;this.expiring=true;
-   try{await this.sessions.status();}catch{}finally{this.expiring=false;}
+   try{this.devices.prune();await this.sessions.status();}catch{}finally{this.expiring=false;}
   },5000);this.timer.unref();
  }
  async stop(){
@@ -33,10 +34,10 @@ class HostService{
   if(this.server){const s=this.server;this.server=null;s.closeAllConnections();await new Promise(r=>s.close(r));}
   await this.sessions.shutdown();
  }
- invitation(){
-  if(!this.server)throw Error('Start Orbit hosting first');
+ approvePairing(input){
+  if(!this.server)throw Error('Open Orbit Host first');
   if(this.sessions.active())throw Error('End the current session before linking again');
-  return this.devices.generate();
+  return this.devices.approve(input);
  }
  revoke(id){
   if(this.sessions.active())throw Error('End the current session before removing trust');
@@ -59,20 +60,24 @@ class HostService{
   try{
    if(!isPrivate(address))return send(403,{error:'Local network only'});
    if(req.headers.origin)return send(403,{error:'Native Orbit clients only'});
-   const endpoint=new URL(req.url,'https://localhost').pathname;
-   if(endpoint==='/identity'&&req.method==='GET')return send(200,{version:1,id:this.registry.data.device.id,name:'Zeiron',role:'host'});
+   const url=new URL(req.url,'https://localhost'),endpoint=url.pathname;
+   if(endpoint==='/identity'&&req.method==='GET')return send(200,{version:1,id:this.registry.data.device.id,name:'Zeiron',role:'host',pairingFlow:'client-code-v3'});
    if(endpoint.startsWith('/enrollment/')&&req.method==='POST'){
     if(this.sessions.active())return send(409,{error:'End the current session before linking again'});
     const b=await this.body(req);
     if(this.sessions.active())return send(409,{error:'End the current session before linking again'});
-    if(endpoint==='/enrollment/begin')return send(200,this.devices.begin(b));
-    if(endpoint==='/enrollment/finish')return send(200,this.devices.finish(b,this.fp));
+    if(endpoint==='/enrollment/request')return send(200,this.devices.request(b,address));
+    if(endpoint==='/enrollment/poll')return send(200,this.devices.poll(b,address));
+    if(endpoint==='/enrollment/cancel')return send(200,this.devices.cancelRequest(b,address));
+    if(endpoint==='/enrollment/finish')return send(200,this.devices.finish(b,this.fp,address));
     return send(404,{error:'Unknown Orbit operation'});
    }
    const client=this.devices.authenticate(req.headers.authorization);
    if(!client)return send(401,{error:'Link this Legion Go in Orbit',code:'UNTRUSTED'});
    this.devices.seen();
    if(endpoint==='/status'&&req.method==='GET')return send(200,await this.status());
+   if(endpoint==='/library/game'&&req.method==='GET')return send(200,await this.library.details(url.searchParams.get('id')));
+   if(endpoint==='/library'&&req.method==='GET')return send(200,await this.library.list({force:url.searchParams.get('refresh')==='1'}));
    if(endpoint==='/pair-stream'&&req.method==='POST'){
     const b=await this.body(req);
     if(!/^\d{4}$/.test(b.pin||''))return send(400,{error:'Invalid pairing request'});
