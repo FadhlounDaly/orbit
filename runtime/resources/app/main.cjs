@@ -1,3 +1,4 @@
+if (process.argv.includes('--host')) { require('./host-main.cjs'); } else {
 const { app, BrowserWindow, ipcMain, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -58,7 +59,7 @@ function launchMoonlight(args = [], streaming = false) {
 }
 function trusted(event) { if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('Unsupported caller'); }
 function handle(name, fn) { ipcMain.handle(name, async (event, ...args) => { trusted(event); return fn(...args); }); }
-handle('orbit:info', () => ({ simulator, config, platform: process.platform, version: '0.2.0', screen: { width: 2560, height: 1600, logicalWidth: 1280, logicalHeight: 800 } }));
+handle('orbit:info', () => ({ simulator, config, platform: process.platform, version: '0.3.0', screen: { width: 2560, height: 1600, logicalWidth: 1280, logicalHeight: 800 } }));
 handle('orbit:status', status);
 handle('orbit:config', input => {
   if (!input || typeof input !== 'object' || Object.keys(input).some(key => !['host','profile'].includes(key))) throw new Error('Invalid configuration');
@@ -93,4 +94,6 @@ else {
     win.on('closed', () => { win = null; });
   });
   app.on('window-all-closed', () => app.quit());
+}
+
 }
