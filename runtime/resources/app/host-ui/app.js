@@ -1,45 +1,38 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let busy=false, pairing=false, steamDirty=false;
-function notify(text){$('message').textContent=text;}
+let busy=false,steamDirty=false,timer,linkedBefore=false;
+function notify(s){$('message').textContent=s;}
 async function refresh(){
- try {
+ try{
   const s=await window.orbitHost.status();
-  $('pc').textContent=s.name;
-  $('address').textContent=s.addresses.length?'Add '+s.addresses.join(' or ')+' on your handheld.':'Connect this PC to your local network.';
-  $('badge').textContent=s.running?'Hosting active':s.installed?'Ready to host':'Setup required';
-  $('start').disabled=busy||!s.installed||s.running;
+  $('pc').textContent='Zeiron';
+  $('address').textContent=s.running?'Your Legion Go can find this PC on your home network.':'Start hosting to bring Zeiron online.';
+  $('badge').textContent=s.running&&s.controlOnline?'Online':s.starting?'Starting':s.installed?'Ready to host':'Setup required';
+  $('start').disabled=busy||s.running||s.starting||!s.installed;
   $('stop').disabled=busy||!s.running;
   $('steam').disabled=busy||s.running;$('save').disabled=busy||s.running;
   $('apps').replaceChildren(...(s.apps.length?s.apps:[{name:'Desktop'}]).map(a=>{const li=document.createElement('li');li.textContent=a.name;return li;}));
-  if(!steamDirty || s.running)$('steam').checked=s.apps.some(a=>a.name==='Steam Big Picture');
-  if(!pairing){
-   const selected=$('request').value;
-   $('request').replaceChildren(...(s.pairings.length?s.pairings:[{id:'',name:'No requests yet'}]).map(a=>{
-    const option=document.createElement('option');option.value=a.id;option.textContent=a.name+(a.address?' · '+a.address:'');return option;
-   }));
-   if(s.pairings.some(p=>p.id===selected))$('request').value=selected;
-   else if(selected){$('pin').value='';}
-  }
-  $('approve').disabled=busy||!s.running||!s.pairings.length;
+  if(!steamDirty||s.running)$('steam').checked=s.apps.some(a=>a.name==='Steam Big Picture');
+  $('invite').disabled=busy||!s.controlOnline;
+  $('linked').textContent=s.linked?'Legion Go is linked. Connect from Orbit on your handheld.':'Link your Legion Go once. Future sessions start directly from Orbit.';
+  if(s.linked&&!linkedBefore&&!$('invitation').hidden){$('link-code').value='';$('invitation').hidden=true;}
+  linkedBefore=s.linked;
   if(s.message)notify(s.message);
- } catch {notify('Orbit could not read host status.');}
+ }catch{notify('Orbit could not read host status.');}
 }
 async function run(fn,success){
  if(busy)return;busy=true;await refresh();
- try {await fn();notify(success);}
- catch(e){notify(e.message||'The action failed.');}
+ try{await fn();notify(success);}catch(e){notify(e.message);}
  finally{busy=false;await refresh();}
 }
-$('start').onclick=()=>run(()=>window.orbitHost.start(),'Hosting is ready. Select this PC on your Legion Go to pair.');
+$('start').onclick=()=>run(()=>window.orbitHost.start(),'Zeiron is online.');
 $('stop').onclick=()=>run(()=>window.orbitHost.stop(),'Hosting stopped.');
 $('steam').onchange=()=>{steamDirty=true;};
-$('request').onchange=()=>{$('pin').value='';};
-$('save').onclick=()=>run(async()=>{await window.orbitHost.steam($('steam').checked);steamDirty=false;},'Shared apps saved. Start hosting to make them available.');
-$('pair').onsubmit=event=>{
- event.preventDefault();if(busy)return;pairing=true;
- const input={id:$('request').value,pin:$('pin').value,name:$('name').value.trim()};
- run(()=>window.orbitHost.pair(input),'Paired. Return to Orbit on your handheld and try Desktop.').finally(()=>{pairing=false;$('pin').value='';refresh();});
-};
+$('save').onclick=()=>run(async()=>{await window.orbitHost.steam($('steam').checked);steamDirty=false;},'Session choices saved.');
+$('invite').onclick=()=>run(async()=>{
+ const value=await window.orbitHost.link();
+ $('link-code').value=value.code;$('invitation').hidden=false;
+ clearTimeout(timer);timer=setTimeout(()=>{$('link-code').value='';$('invitation').hidden=true;},Math.max(0,value.expires-Date.now()));
+},'Paste the Orbit code on your Legion Go.');
 $('diagnostics').onclick=()=>window.orbitHost.diagnostics();
 refresh();setInterval(refresh,3000);

@@ -1,8 +1,8 @@
 {
   "name": "orbit-legion-go",
   "productName": "Orbit Legion Go",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "main": "main.cjs",
   "private": true,
-  "description": "Orbit native gaming-PC host, handheld launcher and isolated simulator"
+  "description": "Personal Orbit control plane for Zeiron and Legion Go"
 }
