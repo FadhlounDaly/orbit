@@ -1,0 +1,18 @@
+# Device-specific configuration, browser state and pairing credentials
+/data/
+/moonlight/
+/.cache/
+/runtime/*
+!/runtime/resources/
+/runtime/resources/*
+!/runtime/resources/app/
+node_modules/
+*.log
+*.zip
+*.exe
+*.msi
+*.pem
+*.key
+*.pfx
+.env
+.env.*

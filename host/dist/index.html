@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#080e18"><meta name="description" content="Orbit — your handheld home for your PC, games and desktop.">
+  <title>Orbit · Your PC, on hand</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css"><script defer src="app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Orbit home"><svg viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="9"/><ellipse cx="18" cy="18" rx="17" ry="6" transform="rotate(-35 18 18)"/><circle class="satellite" cx="29" cy="10" r="3"/></svg><span>orbit</span></a>
+      <nav class="navigation" aria-label="Main navigation">
+        <button class="nav-button active" data-view="home" aria-current="page">Home</button>
+        <button class="nav-button" data-view="play">Play</button>
+        <button class="nav-button" data-view="desktop">Desktop</button>
+      </nav>
+      <div class="top-status"><span class="host-badge" id="host-badge"><span class="status-dot"></span><span id="host-label">Checking PC</span></span><time id="clock"></time><button class="icon-button" data-action="settings" aria-label="Orbit preferences"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 17h16M8 4v6M16 14v6"/></svg></button></div>
+    </header>
+    <main id="main" tabindex="-1">
+      <section class="view active" id="view-home" aria-label="Home">
+        <div class="section-heading"><div><p class="eyebrow">YOUR PERSONAL SPACE</p><h1>Welcome aboard.</h1></div><span class="subtle-label">LEGION GO EDITION <span class="tiny-ring">◌</span></span></div>
+        <div class="home-grid">
+          <button class="desktop-hero focusable" data-action="connect">
+            <div class="hero-art"></div><div class="hero-vignette"></div>
+            <div class="hero-top"><span class="glass-tag"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 21h8M12 16v5"/></svg>DESKTOP</span><span class="hero-orbit" aria-hidden="true">✦</span></div>
+            <div class="hero-content"><p class="eyebrow">A WINDOW INTO YOUR PC</p><h2>Make yourself<br>at home.</h2><p>Your Windows workspace.<br>Ready for a smaller screen.</p><span class="primary-label">Connect your Legion Go <span class="keycap">A</span></span></div>
+          </button>
+          <aside class="host-panel"><div class="panel-heading"><span class="panel-label">YOUR HOST</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a12 12 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 16a3 3 0 0 1 4 0"/><circle cx="12" cy="20" r=".5"/></svg></div><div class="pc-icon"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="12" y="5" width="24" height="38" rx="5"/><path d="M18 13h12M18 19h12"/><circle cx="24" cy="33" r="3"/></svg></div><h2 id="pc-name">Your gaming PC</h2><p class="gpu-name" id="gpu-name">Checking hardware…</p><dl class="host-details"><div><dt>Orbit link</dt><dd id="orbit-link">Checking</dd></div><div><dt>Streaming host</dt><dd id="stream-host">Checking</dd></div><div><dt>Legion Go</dt><dd class="amber">Not paired</dd></div></dl><button class="secondary-button focusable" data-action="connect">Set up connection</button><p class="panel-footnote">Local preview · On this PC</p></aside>
+        </div>
+        <div class="section-row"><h2>Go somewhere.</h2><span>One home for what comes next</span></div>
+        <div class="quick-grid">
+          <button class="quick-card cyan focusable" data-view="play"><span class="card-icon" data-icon="gamepad"></span><span class="quick-text"><strong>Play</strong><span>Your PC library</span></span><span class="card-number">01</span></button>
+          <button class="quick-card violet focusable" data-view="desktop"><span class="card-icon" data-icon="desktop"></span><span class="quick-text"><strong>Desktop</strong><span>Your whole workspace</span></span><span class="card-number">02</span></button>
+          <button class="quick-card amber-card focusable" data-action="tools"><span class="card-icon" data-icon="tools"></span><span class="quick-text"><strong>Your tools</strong><span>Make Orbit your own</span></span><span class="card-number">03</span></button>
+        </div>
+      </section>
+      <section class="view" id="view-play" aria-label="Play" hidden><div class="section-heading"><div><p class="eyebrow">FROM YOUR PC</p><h1>Your library.</h1></div><button class="text-button focusable" data-action="refresh">Refresh library</button></div><div class="library-note"><span class="pill">STEAM</span><span id="library-count">Checking installed titles…</span></div><div class="library-grid" id="library-grid"></div><div class="empty-state" id="library-empty" hidden><span class="empty-icon" data-icon="gamepad"></span><h2>No titles found yet</h2><p>Install a title in Steam on your PC, then refresh.<br>Your original files stay exactly where they are.</p><button class="secondary-button focusable" data-action="refresh">Check again</button></div></section>
+      <section class="view" id="view-desktop" aria-label="Desktop" hidden><div class="section-heading"><div><p class="eyebrow">YOUR WORKSPACE</p><h1>A little closer.</h1></div><span class="subtle-label">DESKTOP ACCESS</span></div><div class="desktop-layout"><div class="workspace-card"><div class="workspace-art"></div><div class="workspace-content"><span class="large-icon" data-icon="desktop"></span><h2>Windows desktop</h2><p>Bring your browser, apps and files along.<br>Connect once, then make yourself comfortable.</p><button class="primary-button focusable" data-action="connect">Set up desktop streaming</button></div></div><div class="desktop-side"><div class="info-card"><span class="panel-label">HANDHELD PROFILE</span><h2 id="profile-name">Balanced</h2><p id="profile-description">1920 × 1200 · 60 fps</p><button class="secondary-button focusable" data-action="settings">Choose a profile</button><span class="small-note">Saved preference. Streaming settings are applied during connection setup.</span></div><div class="info-card compact"><span class="card-icon" data-icon="controller"></span><h3>Take control</h3><p>Use touch, sticks or a keyboard to navigate Orbit.</p><span class="small-note" id="controller-status">No controller detected</span></div></div></div></section>
+    </main>
+    <footer class="footer"><div class="input-hints"><span><kbd class="xbox-a">A</kbd> Select</span><span><kbd class="xbox-b">B</kbd> Back</span><span><kbd>LB</kbd><kbd>RB</kbd> Switch tabs</span></div><span class="footer-right"><span class="mini-orbit">◌</span> Your PC. Your space.</span></footer>
+  </div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div class="dialog-inner"><div class="dialog-top"><span class="eyebrow" id="dialog-eyebrow">ORBIT</span><button class="icon-button" data-action="close" aria-label="Close dialog">×</button></div><h2 id="dialog-title"></h2><div id="dialog-content"></div></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
