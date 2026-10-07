@@ -66,3 +66,9 @@ Orbit tracks newly started game windows under the host's configured game install
 Xbox activation can open cloud-save, sign-in, or launcher dialogs before gameplay. Orbit keeps the stream available to make those choices on the handheld. It does not select or overwrite a save automatically.
 
 For Zeiron's Yuzu EA Xbox 360 controller bindings, close Yuzu and run `node scripts/repair-yuzu-input.cjs` locally. This backs up its configuration and repairs raw SDL buttons and D-pad hats. Keyboard bindings are a separate Yuzu input profile; this repair configures the streamed controller.
+
+### Orbit 0.9.1 input focus fix
+
+Controller forwarding remains enabled when the streaming window loses focus, including during the Orbit launch handoff. Update the physical handheld and fully restart its Orbit app for this change to affect Moonlight's launch options. The session menu also receives controller input, so pressing its buttons may send that button to the game while the menu is open; touch is preferable for Close game until forwarding can be paused through a supported runtime API.
+
+Yuzu's selected Player 1 controller profile replaces gameplay keyboard mappings. To test Zelda locally with the keyboard, close Yuzu and run `node scripts/repair-yuzu-input.cjs --keyboard` on Zeiron. Arrow keys navigate, **C** is A, **X** is B, **Q/E** are L/R, and **WASD** moves. Restore streaming controls with `node scripts/repair-yuzu-input.cjs` while Yuzu is closed. Both modes back up the prior configuration and explicitly connect Player 1 as a Pro Controller. Do not run either repair while Yuzu is open; it can overwrite externally edited settings on exit.
