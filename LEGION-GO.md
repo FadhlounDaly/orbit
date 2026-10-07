@@ -24,7 +24,7 @@ Trust persists in a local encrypted device registry. Choose a game and Play; use
 | Smooth | 1920 × 1200 | 120 fps | 35 Mbps |
 | Sharp | 2560 × 1600 | 60 fps | 35 Mbps |
 
-Profiles describe requests to the streaming engine and need testing on the actual display and network.
+Profiles request stream quality and a supported handheld-shaped Windows display mode. Orbit restores Zeiron’s original display mode after the session. Controller forwarding needs the one-time host driver setup; the client streams gamepad input to an Xbox controller on Zeiron.
 
 ## Local data and isolation
 
@@ -54,3 +54,25 @@ Electron 44.5.1 and Moonlight 6.2.0 are portable official releases with verified
 D-pad/stick moves focus; A plays the focused game or activates a control; B backs out; X opens search; Y refreshes the library; LB/RB switches Library/Your PC; Menu opens settings. Touch selects a cover, then Play starts it. Arrow keys and Enter also work.
 
 The library comes from Zeiron, including registered Xbox PC titles, Steam, and supported standalone PC games. Xbox games without a valid Windows registration are marked for host setup. Emulators, ambiguous executables, and installers are not automatically treated as game launch targets. Other launcher providers are not currently imported.
+
+During play, tap the top-right **Orbit · Menu** badge. **Resume** returns to the game; **End stream** closes Orbit’s streaming process and returns to the library while leaving the game open on Zeiron. With the menu focused, controller **B** resumes and **A** ends the stream; the streaming window receives gamepad input while it has focus. Keyboard shortcut: **Ctrl+Alt+O**. The badge does not take focus during normal play.
+
+### Orbit 0.9 game sessions
+
+Update both Zeiron and the handheld to `orbit-discover-and-link`. A game session's Orbit menu now offers **Close game**, which requests a normal exit on Zeiron before ending the stream. If the game asks to save or confirm exit, resolve that dialog in the stream and retry. Desktop sessions offer **End Desktop** and do not close host applications.
+
+Orbit tracks newly started game windows under the host's configured game installation. Once the observed game processes exit, the handheld returns to its library instead of reconnecting to an empty desktop. Detection happens on session polling; a brief desktop transition is still possible. Games with launchers that move outside their installation directory may require further provider-specific tracking. Preexisting host games are deliberately not closed.
+
+Xbox activation can open cloud-save, sign-in, or launcher dialogs before gameplay. Orbit keeps the stream available to make those choices on the handheld. It does not select or overwrite a save automatically.
+
+For Zeiron's Yuzu EA Xbox 360 controller bindings, close Yuzu and run `node scripts/repair-yuzu-input.cjs` locally. This backs up its configuration and repairs raw SDL buttons and D-pad hats. Keyboard bindings are a separate Yuzu input profile; this repair configures the streamed controller.
+
+### Orbit 0.9.1 input focus fix
+
+Controller forwarding remains enabled when the streaming window loses focus, including during the Orbit launch handoff. Update the physical handheld and fully restart its Orbit app for this change to affect Moonlight's launch options. The session menu also receives controller input, so pressing its buttons may send that button to the game while the menu is open; touch is preferable for Close game until forwarding can be paused through a supported runtime API.
+
+Yuzu's selected Player 1 controller profile replaces gameplay keyboard mappings. To test Zelda locally with the keyboard, close Yuzu and run `node scripts/repair-yuzu-input.cjs --keyboard` on Zeiron. Arrow keys navigate, **C** is A, **X** is B, **Q/E** are L/R, and **WASD** moves. Restore streaming controls with `node scripts/repair-yuzu-input.cjs` while Yuzu is closed. Both modes back up the prior configuration and explicitly connect Player 1 as a Pro Controller. Do not run either repair while Yuzu is open; it can overwrite externally edited settings on exit.
+
+### Orbit 0.10 host overview
+
+**Your PC** shows Zeiron's CPU model and load, total and used RAM, primary graphics card and driver, streaming readiness, uptime, and control-request response time. It refreshes in place with the existing 15-second status poll. Offline information is clearly labeled last known, and live measurements are unavailable. The response time measures Orbit's control request, not video latency. GPU load, GPU memory, and temperatures are not fabricated; live GPU usage is explicitly unavailable. Graphics inventory uses a cached read-only Windows query and requires no administrator access. Hardware information is available only to a linked handheld.

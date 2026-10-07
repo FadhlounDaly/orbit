@@ -9,7 +9,7 @@ class ClientCoordinator{
   this.registry=registry;this.adapter=adapter;this.legacyHost=legacyHost;this.profile=profile;
   this.resolve=resolve;this.request=request;this.notify=notify;this.schedule=schedule;this.cancel=cancel;
   this.discovery=discovery||new Discovery({resolve,request});this.discovering=null;this.discoveryAbort=null;this.discovered=[];this.identity=null;this.selectedHost=null;this.pairing=null;this.pairAbort=null;
-  this.hostOnline=false;this.libraryCache=null;this.libraryRequest=null;this.libraryAt=0;
+  this.hostInfo=null;this.hostOnline=false;this.libraryCache=null;this.libraryRequest=null;this.libraryAt=0;
   this.machine=new Machine(()=>this.emit());this.address=null;this.sessions=[];this.session=null;
   this.refreshing=null;this.pollTimer=null;this.retryTimer=null;this.retries=0;this.failures=0;
   this.userStopped=false;this.closed=false;this.generation=0;this.connectOperation=null;
@@ -19,7 +19,7 @@ class ClientCoordinator{
   return {...this.machine.snapshot(),name:'Zeiron',reachable:!['UNKNOWN','DISCOVERING','OFFLINE'].includes(this.machine.state),
    trusted:Boolean(this.registry.data.host),paired:['READY','CONNECTING','STREAMING','RECONNECTING'].includes(this.machine.state),
    sessions:this.sessions.map(s=>({...s})),session:this.session?{id:this.session.id,intent:this.session.intent,game:this.session.game||null}:null,hostOnline:this.hostOnline,
-   profile:this.profile,device:this.registry.view().device,hosts:this.discovered.map(h=>({...h})),pairing:this.pairing?{...this.pairing}:null};
+   hostInfo:this.hostInfo,profile:this.profile,device:this.registry.view().device,hosts:this.discovered.map(h=>({...h})),pairing:this.pairing?{...this.pairing}:null};
  }
  async locate(){
   const record=this.registry.data.host;
@@ -59,7 +59,8 @@ class ClientCoordinator{
    const host=this.registry.data.host;
    if(!host){this.machine.move('UNPAIRED','Discover Zeiron, select it, then enter the handheld’s code in Orbit Host.');return this.snapshot();}
    if(!quiet)this.machine.move('TRUSTED');
-   const status=await this.remote('/status');
+   const started=Date.now();const status=await this.remote('/status');
+   this.hostInfo={system:status.system||null,streaming:status.streaming||null,controlRoundTripMs:Date.now()-started,receivedAt:new Date().toISOString()};
    if(!status.online){this.hostOnline=false;this.machine.move('OFFLINE','Open Orbit on Zeiron to bring it online.');return this.snapshot();}
    if(status.ready===false){this.machine.move('ERROR','Zeiron is online, but streaming is not ready. Check Orbit Host.');return this.snapshot();}
    try{
@@ -202,6 +203,7 @@ class ClientCoordinator{
     const reply=await this.remote('/sessions/heartbeat','POST',{id:this.session.id});
     if(generation!==this.generation||!this.session)return;
     this.failures=0;
+    if(!reply.session&&this.session.gameId){await this.disconnect(false);return;}
     if(reply.session?.state==='STREAMING'&&this.machine.state==='CONNECTING')this.machine.move('STREAMING');
     if(reply.session?.state==='DISCONNECTED'){
      this.adapter.stop();return;
@@ -247,7 +249,9 @@ class ClientCoordinator{
    }
   },delay);
  }
- async disconnect(){
+ async disconnect(closeGame=true){
+  const owned=this.session;
+  if(closeGame&&owned?.gameId&&owned.id)await this.remote('/sessions/end','POST',{id:owned.id,closeGame:true});
   this.userStopped=true;this.cancel(this.retryTimer);this.cancel(this.pollTimer);
   const current=this.session;
   this.session=null;++this.generation;

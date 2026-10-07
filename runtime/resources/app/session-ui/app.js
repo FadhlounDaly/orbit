@@ -1,0 +1,6 @@
+'use strict';
+const $=id=>document.getElementById(id);let expanded=false,busy=false,previous=[];
+window.orbitSession.onState(state=>{$('description').textContent=state.game?'Close this game on Zeiron and return to your Orbit library.':'End Desktop to return to your Orbit library.';$('end').innerHTML=(state.game?'Close game':'End Desktop')+' <small>A</small>';expanded=state.expanded;busy=state.busy;$('title').textContent=state.title;$('controls').hidden=!expanded;for(const id of ['menu','resume','end'])$(id).disabled=busy;});
+$('menu').onclick=()=>window.orbitSession.menu();$('resume').onclick=()=>window.orbitSession.resume();$('end').onclick=async()=>{try{await window.orbitSession.end();}catch(e){$('error').hidden=false;$('error').textContent=e.message;}};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();window.orbitSession.resume();}});
+function poll(){const pad=[...navigator.getGamepads()].find(p=>p?.connected);if(pad){const buttons=pad.buttons.map(b=>b.pressed);if(expanded&&!busy&&document.hasFocus()){if(buttons[1]&&!previous[1])$('resume').click();else if(buttons[0]&&!previous[0])$('end').click();}previous=buttons;}else previous=[];requestAnimationFrame(poll);}poll();

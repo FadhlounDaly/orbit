@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {execFile,spawn}=require('node:child_process');
+const {GameProcessTracker}=require('./game-process.cjs');
 const GAME_ID=/^(?:steam:\d{1,12}|(?:xbox|local):[a-f0-9]{64})$/;
 const TOOL_IDS=new Set(['250820','431960','837380']);
 const hash=value=>crypto.createHash('sha256').update(value.toLowerCase()).digest('hex');
@@ -50,7 +51,7 @@ class GameLibrary{
     const text=read(path.join(folder,'steamapps',file.name)),id=vdf(text,'appid'),name=vdf(text,'name'),install=vdf(text,'installdir');
     if(!/^\d{1,12}$/.test(id||'')||id==='228980'||!name||name.length>200||!inside(path.join(folder,'steamapps/common'),install))continue;
     const artworkFiles=[path.join(steam,'appcache/librarycache',id,'library_600x900.jpg'),path.join(steam,'appcache/librarycache',id+'_library_600x900.jpg'),path.join(steam,'appcache/librarycache',id,'header.jpg')];
-    const record={id:'steam:'+id,name,provider:'Steam',kind:TOOL_IDS.has(id)?'app':'game',installed:true,launchable:fs.existsSync(path.join(steam,'steam.exe')),artFile:artworkFiles.find(p=>fs.existsSync(p)),launch:{type:'steam',exe:path.join(steam,'steam.exe'),appId:id}};
+    const record={id:'steam:'+id,name,provider:'Steam',kind:TOOL_IDS.has(id)?'app':'game',installed:true,launchable:fs.existsSync(path.join(steam,'steam.exe')),artFile:artworkFiles.find(p=>fs.existsSync(p)),launch:{type:'steam',exe:path.join(steam,'steam.exe'),appId:id,installRoot:path.join(folder,'steamapps/common',install)}};
     records.set(record.id,record);
    }
   }
@@ -73,7 +74,7 @@ class GameLibrary{
    const id='xbox:'+hash(identity.Name+'!'+appId);
    const artFile=[visual.Square480x480Logo,visual.Square150x150Logo,visual.StoreLogo].map(p=>inside(dir,p)).find(Boolean);
    const storeId=xml.match(/<StoreId>\s*([a-z0-9]{12})\s*<\/StoreId>/i)?.[1];
-   const record={id,storeId,name:name.slice(0,200),provider:'Xbox',kind:'game',installed:Boolean(file||pkg),launchable:Boolean(aumid&&pkg),artFile,launch:{type:'xbox',aumid},detail:aumid?'':'Open this game once on Zeiron to finish its Xbox registration.'};
+   const record={id,storeId,name:name.slice(0,200),provider:'Xbox',kind:'game',installed:Boolean(file||pkg),launchable:Boolean(aumid&&pkg),artFile,launch:{type:'xbox',aumid,installRoot:dir},detail:aumid?'':'Open this game once on Zeiron to finish its Xbox registration.'};
    // A content copy can supply richer artwork than the registered WindowsApps wrapper.
    const old=records.get(id);if(!old||(!old.artFile&&artFile))records.set(id,record);
   }
@@ -94,9 +95,12 @@ class GameLibrary{
    if(!profile||typeof profile!=='object')continue;
    if(profile.provider!=='Emulation'||typeof profile.name!=='string'||profile.name.length>200||typeof profile.root!=='string'||!path.isAbsolute(profile.root))continue;
    const exe=inside(profile.root,profile.executable),rom=inside(profile.root,profile.rom),data=inside(profile.root,profile.dataDirectory);
-   if(!exe||!rom||!data||!/^Ryujinx\.exe$/i.test(path.basename(exe))||! /\.(?:nsp|xci)$/i.test(rom)||!fs.statSync(data).isDirectory())continue;
-   const id='local:'+hash(exe+'|'+rom);
-   records.set(id,{id,name:profile.name,provider:'Emulation',kind:'game',installed:true,launchable:true,artFile:inside(profile.root,profile.artwork),launch:{type:'local',exe,cwd:path.dirname(exe),args:['-r',data,'--fullscreen',rom]}});
+   if(!exe||!rom||!data||! /\.(?:nsp|xci)$/i.test(rom)||!fs.statSync(data).isDirectory())continue;
+   const ryujinx=/^Ryujinx\.exe$/i.test(path.basename(exe)),yuzu=/^yuzu(?:_ea|_preview)?\.exe$/i.test(path.basename(exe));
+   if(!ryujinx&&!yuzu)continue;
+   if(yuzu&&path.resolve(data)!==path.join(path.dirname(exe),'user'))continue;
+   const id=typeof profile.id==='string'&&/^local:[a-f0-9]{64}$/.test(profile.id)?profile.id:'local:'+hash(profile.root+'|'+rom);
+   records.set(id,{id,name:profile.name,provider:'Emulation',kind:'game',installed:true,launchable:true,artFile:inside(profile.root,profile.artwork),launch:{type:'local',exe,cwd:path.dirname(exe),args:ryujinx?['-r',data,'--fullscreen',rom]:['-f','-g',rom]}});
   }
   this.records=new Map([...records].slice(0,500));
   if(this.artworkCache)await this.artworkCache.prepare(this.records);
@@ -125,30 +129,18 @@ class GameLibrary{
  }
 }
 class GameLaunchManager{
- constructor({execute=execFile,spawnProcess=spawn,platform=process.platform,systemRoot=process.env.SystemRoot||'C:\\Windows'}={}){this.platform=platform;this.execute=execute;this.spawnProcess=spawnProcess;this.systemRoot=systemRoot;this.active=new Map();}
+ constructor({execute=execFile,spawnProcess=spawn,platform=process.platform,tracker=new GameProcessTracker(),systemRoot=process.env.SystemRoot||'C:\\Windows'}={}){this.tracker=tracker;this.platform=platform;this.execute=execute;this.spawnProcess=spawnProcess;this.systemRoot=systemRoot;this.active=new Map();}
  async launch(record){
   if(!record||!GAME_ID.test(record.id)||!record.launchable)throw Error('Unknown game launch target');
   const target=record.launch;
+  if(this.platform==='win32')await this.tracker.begin(record);
   if(target.type==='local'){
    if(!fs.existsSync(target.exe))throw Error('Game is no longer installed on Zeiron');
    const existing=this.active.get(target.exe);
    if(existing&&existing.exitCode==null&&!existing.killed)return {state:'PROCESS_STARTED',name:record.name};
    return new Promise((resolve,reject)=>{
-    const child=this.spawnProcess(target.exe,target.args||[],{cwd:target.cwd,shell:false,detached:false,windowsHide:false,stdio:'ignore'});
-    child.once('error',error=>{
-     if(error.code==='EACCES'&&this.platform==='win32'){
-      // Use Windows' normal ShellExecute launch surface; never request RunAs.
-      // Data comes only from the host catalog, not a remote command or argument.
-      const payload=Buffer.from(JSON.stringify({exe:target.exe,cwd:target.cwd,args:target.args||[]})).toString('base64');
-      const script="$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+payload+"'))|ConvertFrom-Json;$o=@{FilePath=$p.exe;WorkingDirectory=$p.cwd;PassThru=$true};if($p.args.Count){$o.ArgumentList=($p.args|ForEach-Object{'\"'+$_+'\"'})};$g=Start-Process @o;$g.Id";
-      const encoded=Buffer.from(script,'utf16le').toString('base64');
-      this.execute(path.join(this.systemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',encoded],{windowsHide:true,shell:false,timeout:15000},(e,out)=>{
-       if(e||!/^\s*\d+\s*$/.test(out||''))return reject(Error('Windows blocked this game. Check its administrator compatibility setting on Zeiron.'));
-       resolve({state:'PROCESS_STARTED',name:record.name});
-      });return;
-     }
-     reject(Error(error.code==='EACCES'?'Windows blocked this game. Check its administrator compatibility setting on Zeiron.':'Zeiron could not start this game ('+(error.code||'unknown error')+')'));
-    });
+    const child=this.spawnProcess(target.exe,target.args||[],{cwd:target.cwd,shell:false,detached:false,windowsHide:false,stdio:'ignore',env:{...process.env,__COMPAT_LAYER:'RunAsInvoker'}});
+    child.once('error',error=>reject(Error(error.code==='EACCES'?'Windows blocked this game. Open its setup once on Zeiron; Orbit will not request administrator approval during Play.':'Zeiron could not start this game ('+(error.code||'unknown error')+')')));
     child.once('exit',()=>{if(this.active.get(target.exe)===child)this.active.delete(target.exe);});
     child.once('spawn',()=>{this.active.set(target.exe,child);child.unref();resolve({state:'PROCESS_STARTED',name:record.name});});
    });
@@ -159,9 +151,12 @@ class GameLaunchManager{
   if(target.type==='xbox'&&!/^[a-zA-Z0-9_.-]+![a-zA-Z0-9_.-]+$/.test(target.aumid))throw Error('Invalid Xbox target');
   if(!['steam','xbox'].includes(target.type))throw Error('Unsupported game provider');
   return new Promise((resolve,reject)=>this.execute(exe,args,{windowsHide:true,shell:false,timeout:15000},error=>{
-   if(error)return reject(Error('Zeiron could not request this game from '+record.provider));
+   // Explorer delegates activation to the desktop shell and may report a nonzero exit after opening an Xbox dialog.
+   if(error&&(target.type!=='xbox'||error.code==='ENOENT'||error.code==='EACCES'||error.killed))return reject(Error('Zeiron could not request this game from '+record.provider));
    resolve({state:'REQUESTED',name:record.name});
   }));
  }
+ async finished(id){return this.platform==='win32'?(await this.tracker.inspect(id)).finished:false;}
+ async closeGame(id){if(this.platform!=='win32')throw Error('Game closing requires Windows');return this.tracker.close(id);}
 }
 module.exports={GameLibrary,GameLaunchManager,GAME_ID,windowsCatalog,inside,attributes};

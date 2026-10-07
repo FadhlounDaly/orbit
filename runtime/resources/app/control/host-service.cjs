@@ -4,14 +4,15 @@ const {CONTROL_PORT,fingerprint,isPrivate}=require('./transport.cjs');
 const {publicSessions}=require('./model.cjs');
 const {DeviceManager}=require('./devices.cjs');
 const {SessionManager}=require('./host-sessions.cjs');
+const {HostHardware}=require('./host-hardware.cjs');
 const {SystemObserver}=require('./system-observer.cjs');
 const {GameLibrary,GameLaunchManager}=require('./game-library.cjs');
 class HostService{
- constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null,library=new GameLibrary(),launcher=new GameLaunchManager()}){
+ constructor({backend,registry,port=CONTROL_PORT,clock=Date.now,journal=null,display,graphics,library=new GameLibrary(),launcher=new GameLaunchManager()}){
   this.backend=backend;this.registry=registry;this.port=port;this.clock=clock;
   this.server=null;this.fp=null;this.timer=null;this.expiring=false;
   this.devices=new DeviceManager({registry,clock});
-  this.library=library;this.sessions=new SessionManager({backend,clock,journal,library,launcher});this.system=new SystemObserver();
+  this.library=library;this.sessions=new SessionManager({backend,clock,journal,display,graphics,library,launcher});this.system=new SystemObserver();this.hardware=new HostHardware();
  }
  async start(){
   if(this.server)return;
@@ -27,7 +28,7 @@ class HostService{
   this.timer=setInterval(async()=>{
    if(this.expiring)return;this.expiring=true;
    try{this.devices.prune();await this.sessions.status();}catch{}finally{this.expiring=false;}
-  },5000);this.timer.unref();
+  },1500);this.timer.unref();
  }
  async stop(){
   clearInterval(this.timer);this.timer=null;this.devices.cancel();
@@ -52,7 +53,7 @@ class HostService{
   const s=await this.backend.status();
   return {version:1,id:this.registry.data.device.id,name:'Zeiron',online:true,ready:s.running&&s.healthy!==false,
    sessions:publicSessions(s.apps.map(a=>a.name)),...await this.sessions.status(),
-   system:this.system.snapshot(),streaming:{installed:s.installed,running:s.running,healthy:s.healthy===true}};
+   system:{...this.system.snapshot(),hardware:await this.hardware.snapshot()},streaming:{installed:s.installed,running:s.running,healthy:s.healthy===true}};
  }
  async handle(req,res){
   const address=(req.socket.remoteAddress||'').replace(/^::ffff:/,'');
@@ -97,7 +98,7 @@ class HostService{
     const b=await this.body(req);return send(200,{session:await this.sessions.heartbeat(b.id,client.id),hostSession:this.sessions.snapshot()});
    }
    if(endpoint==='/sessions/end'&&req.method==='POST'){
-    const b=await this.body(req);return send(200,await this.sessions.end(b.id,client.id));
+    const b=await this.body(req);return send(200,await this.sessions.end(b.id,client.id,b.closeGame===true));
    }
    if(endpoint==='/sessions/state'&&req.method==='GET')return send(200,await this.sessions.status());
    send(404,{error:'Unknown Orbit operation'});

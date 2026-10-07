@@ -1,7 +1,7 @@
 {
   "name": "orbit-legion-go",
   "productName": "Orbit Legion Go",
-  "version": "0.7.0",
+  "version": "0.10.0",
   "main": "main.cjs",
   "private": true,
   "description": "Personal Orbit control plane for Zeiron and Legion Go"

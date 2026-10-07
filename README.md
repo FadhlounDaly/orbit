@@ -37,3 +37,5 @@ Keep both devices on the home network. The optional Steam Big Picture session is
 Device registries, engine pairings, certificates, management credentials, logs and profiles remain under ignored local directories. Downloaded binaries are excluded from Git.
 
 Run `node --test tests/*.test.cjs` to validate the coordinator and host safety. Actual Legion Go media and controller tests remain necessary after each architectural change.
+
+Orbit 0.8 adds a branded launch transition and an in-stream Orbit menu. Tap **Orbit · Menu** at the top-right, then **End stream** to close the owned streaming process and return to the library. The game stays open on Zeiron. **Ctrl+Alt+O** also opens the menu. Update the client on the physical handheld to use these controls. Original streaming-engine licenses and attribution remain intact.

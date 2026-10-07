@@ -41,9 +41,9 @@ class StreamObserver {
   }
 }
 class SessionManager {
-  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend),library=null,launcher=null}){
+  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend),library=null,launcher=null,graphics=null}){
     this.backend=backend;this.clock=clock;this.journal=journal;this.display=display;this.observer=observer;
-    this.library=library;this.launcher=launcher;
+    this.library=library;this.launcher=launcher;this.graphics=graphics;
     this.state='IDLE';this.current=null;this.error=null;this.tail=Promise.resolve();
   }
   serial(fn){const job=this.tail.then(fn);this.tail=job.catch(()=>{});return job;}
@@ -66,7 +66,7 @@ class SessionManager {
   snapshot(){return {state:this.state,error:this.error,session:this.current?{
     id:this.current.id,intent:this.current.intent,clientDeviceId:this.current.clientDeviceId,
     targetType:this.current.gameId?'game':'intent',targetId:this.current.gameId||this.current.intent,game:this.current.game||null,streamProfile:this.current.profile,
-    displayPolicy:'preserve-physical',startedAt:this.current.startedAt,currentState:this.state}:null};}
+    displayPolicy:this.current.previousSystemState?.policy||'preserve-physical',startedAt:this.current.startedAt,currentState:this.state}:null};}
   active(){return Boolean(this.current)||this.state!=='IDLE';}
   expired(){return this.current&&this.clock()-this.current.heartbeat>=45000;}
   async start({intent,profile='balanced',resumeId,gameId},clientDeviceId,authorized=()=>true){return this.serial(async()=>{
@@ -88,7 +88,10 @@ class SessionManager {
     this.error=null;this.move('PREPARING');
     try{
       this.current.previousSystemState=await this.display.snapshot();this.save();
-      this.move('CONFIGURING_DISPLAY');await this.display.prepare(STREAM_PROFILES[profile]);
+      this.move('CONFIGURING_DISPLAY');const configured=await this.display.prepare(STREAM_PROFILES[profile]);
+      const [width,height]=STREAM_PROFILES[profile].resolution.split('x').map(Number);
+      this.current.displayMode=configured?.mode||{width,height};
+      if(game&&this.graphics){this.current.previousGameSettings=await this.graphics.snapshot(game,this.current.displayMode);this.save();await this.graphics.prepare(this.current.previousGameSettings);}
       this.move('PREPARING_STREAM');
       const status=await this.backend.status();
       if(!status.running||status.healthy===false||!status.apps.some(a=>a.name===target.target))throw Error('This session is not ready on Zeiron');
@@ -101,8 +104,9 @@ class SessionManager {
     profile:this.current.profile,game:this.current.game||null,stream:STREAM_PROFILES[this.current.profile],hostSession:this.snapshot()};}
   async heartbeat(id,clientDeviceId){return this.serial(async()=>{
     if(this.expired()){await this.endInternal('heartbeat-expired');throw conflict('Session expired');}
+    if(!this.current&&this.completed?.id===id&&this.completed.clientDeviceId===clientDeviceId)return null;
     if(!this.current||this.current.id!==id||this.current.clientDeviceId!==clientDeviceId)throw conflict('Session expired');
-    this.current.heartbeat=this.clock();this.observe();this.save();return this.compatible();
+    this.current.heartbeat=this.clock();await this.checkGame();this.observe();this.save();return this.compatible();
   });}
   observe(){
     if(!this.current)return;
@@ -111,12 +115,14 @@ class SessionManager {
   }
   compatible(){return this.current?{id:this.current.id,intent:this.current.intent,
     state:this.state==='READY'?'CONNECTING':this.state==='RECONNECTING'?'DISCONNECTED':this.state}:null;}
+  async checkGame(){if(this.current?.gameId&&await this.launcher?.finished?.(this.current.gameId)){this.completed={id:this.current.id,clientDeviceId:this.current.clientDeviceId};await this.endInternal(null);}}
   async status(){return this.serial(async()=>{
     if(this.expired())await this.endInternal('heartbeat-expired');
-    this.observe();return {session:this.compatible(),hostSession:this.snapshot()};
+    await this.checkGame();this.observe();return {session:this.compatible(),hostSession:this.snapshot()};
   });}
-  async end(id,clientDeviceId){return this.serial(async()=>{
+  async end(id,clientDeviceId,closeGame=false){return this.serial(async()=>{
     if(this.current&&(id!==this.current.id||clientDeviceId!==this.current.clientDeviceId))throw conflict('Session identity mismatch');
+    if(closeGame&&this.current?.gameId){try{await this.launcher.closeGame(this.current.gameId);}catch(e){throw conflict(e.message);}}
     await this.endInternal(null);return {ended:true,hostSession:this.snapshot()};
   });}
   async endInternal(reason){
@@ -125,7 +131,11 @@ class SessionManager {
     this.error=reason;this.move('ENDING');this.move('RESTORING');await this.restore();
   }
   async restore(){
-    try{await this.display.restore(this.current?.previousSystemState);this.current=null;this.move('IDLE');}
+    try{
+      const errors=[];try{await this.graphics?.restore(this.current?.previousGameSettings);}catch(e){errors.push(e.message);}
+      try{await this.display.restore(this.current?.previousSystemState);}catch(e){errors.push(e.message);}
+      if(errors.length)throw Error(errors.join('; '));this.current=null;this.move('IDLE');
+    }
     catch(error){this.error='Restoration failed: '+error.message;this.move('ERROR');throw conflict(this.error);}
   }
   async shutdown(){return this.serial(()=>this.endInternal('host-stopped'));}

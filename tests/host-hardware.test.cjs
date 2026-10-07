@@ -1,0 +1,4 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');const {HostHardware}=require('../runtime/resources/app/control/host-hardware.cjs');
+test('hardware queries are cached and concurrent requests share one read',async()=>{let calls=0,done,now=0;const hardware=new HostHardware({platform:'win32',clock:()=>now,execute:(exe,args,options,cb)=>{calls++;done=cb;}});const a=hardware.snapshot(),b=hardware.snapshot();done(null,JSON.stringify({graphics:[{Name:'GPU',DriverVersion:'1'}]}));assert.deepEqual(await a,await b);assert.equal(calls,1);await hardware.snapshot();assert.equal(calls,1);now=300001;const c=hardware.snapshot();done(null,'{}');await c;assert.equal(calls,2);});
+test('failed hardware reads remain explicitly unavailable',async()=>{const hardware=new HostHardware({platform:'win32',execute:(exe,args,options,cb)=>cb(Error('timeout'),'')});assert.deepEqual(await hardware.snapshot(),{graphics:[],error:'Graphics details unavailable'});});
