@@ -1,40 +1,39 @@
 # Orbit
 
-Orbit is a Windows launcher for a gaming PC and Lenovo Legion Go. The handheld launcher uses Moonlight to pair with a compatible streaming host. Orbit Host manages a separate Sunshine backend on the gaming PC. The older local preview remains in `host/`.
+Your personal connection between **Zeiron** and **Legion Go**. Orbit owns device identity, trust, sessions, connection state, and recovery. Unmodified Sunshine and Moonlight provide the streaming engines behind it.
 
-## Set up the gaming PC
+## Zeiron
 
-Run `Setup Orbit Host.ps1`, then **Start Orbit Host.cmd**. Orbit provides start/stop hosting, Desktop and optional Steam Big Picture sharing, and approval of pending Moonlight PIN requests. See [HOST.md](HOST.md) for setup, migration, security, and validation.
+1. Review and run `Setup Orbit Host.ps1`.
+2. Open **Start Orbit Host.cmd**; hosting starts automatically.
+3. Stop any other host occupying the streaming ports first; Orbit does not stop it automatically.
+4. Approve the reviewed local-network firewall access for the Legion Go, including Orbit's TCP 38742 control channel. Setup does not add rules.
+5. Select **Link Legion Go** to generate the temporary Orbit code.
 
-## Install on the Legion Go
+## Legion Go
 
-1. Download this repository as a ZIP and extract it to a persistent folder, such as `C:\Apps\Orbit`.
-2. Right-click `Setup Orbit.ps1` and select **Run with PowerShell**. The setup downloads pinned Electron and Moonlight releases from their official GitHub repositories and checks SHA-256 hashes before extracting them.
-3. Double-click **Start Orbit.cmd**.
-4. Select **Set up connection** and enter your gaming PC's local IPv4 address or name.
-5. Open Moonlight and complete PIN pairing inside Orbit Host on the gaming PC. Keep both devices on the same LAN.
-6. Refresh Orbit and launch an exposed app or Desktop.
+1. Review and run `Setup Orbit.ps1`, then open **Start Orbit.cmd**.
+2. Orbit resolves Zeiron using its saved device information or ZEIRON-CORE on the LAN.
+3. Select **Link Zeiron** and paste the temporary code from Orbit on the PC. Orbit coordinates streaming trust; there is no manual backend setup.
+4. Once Zeiron shows **Online**, choose **Desktop** and press **Connect**.
 
-If Windows blocks the script, do not disable system-wide execution policy. Review the script and use your normal approved script-running method.
+After linking, trust persists locally. The same Connect action starts future sessions directly. Orbit observes connection state and retries unexpected disconnects up to three times. Ending a session returns to Orbit without quitting the host app.
 
-No separate Node installation is required for the handheld. Setup adds no service, startup entry, firewall rule, or router setting.
+Keep both devices on the home network. The optional Steam Big Picture session is enabled from Orbit Host while hosting is stopped.
 
-## Simulator and PC preview
+## Development and migration
 
-**Start Simulator.cmd** opens an isolated UI simulator. It does not establish a real stream.
-
-The optional PC preview requires Node.js on PATH. Run `host/start-orbit.ps1`; it listens only on `127.0.0.1:38741`. It is not the handheld's streaming server.
-
-See [LEGION-GO.md](LEGION-GO.md) for profiles, limitations, and original validation.
+- Read [ARCHITECTURE.md](ARCHITECTURE.md) for ownership, state transitions, trust boundaries and remaining validation.
+- [HOST.md](HOST.md) describes the host engine setup and local security.
+- Preserve existing `data/`, portable runtimes, and Moonlight configuration when updating. Existing streaming pairing is reused when valid; Orbit's own device link is new.
+- If script execution is blocked, do not weaken Windows execution policy.
+- `Start Simulator.cmd` remains an isolated legacy UI simulator. It does not exercise the new control plane or establish a real stream.
+- `host/` is the older loopback browser preview, not the production host.
 
 ## Source and private state
 
-- `runtime/resources/app/`: Electron launcher source, UI, and original artwork.
-- `host/`: local PC preview and read-only host bridge.
-- `Setup Orbit.ps1`: handheld dependency download and verification.
-- `Setup Orbit Host.ps1`: verified portable Sunshine streaming component.
-- `runtime/resources/app/host-*.cjs` and `host-ui/`: native Orbit host management.
-- Downloaded runtimes, Moonlight, profiles, caches, and pairing credentials are excluded from Git.
-- Each device must complete its own Moonlight pairing; do not copy pairing credentials between devices.
+`runtime/resources/app/control/` owns the control plane. `client-main.cjs` and `host-main.cjs` expose narrow IPC operations to sandboxed Orbit windows. No shell-command endpoint is exposed.
 
-The original app was validated locally. Physical Legion Go pairing, video, audio, and controller behavior still require testing. GitHub distributes Orbit; it does not provide the streaming connection.
+Device registries, engine pairings, certificates, management credentials, logs and profiles remain under ignored local directories. Downloaded binaries are excluded from Git.
+
+Run `node --test tests/*.test.cjs` to validate the coordinator and host safety. Actual Legion Go media and controller tests remain necessary after each architectural change.
