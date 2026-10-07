@@ -5,12 +5,12 @@
 1. Copy and extract the entire `Orbit-Legion-Go` folder to a persistent location on the handheld, such as `C:\Apps\Orbit`.
 2. Double-click **Start Orbit.cmd**. The launcher opens as its own Windows app, initially fullscreen. It does not need Node installed separately.
 3. Select **Set up connection** and enter your gaming PC's name or local IPv4 address. Both devices must be on the same LAN.
-4. Select **Open Moonlight to pair**. In Moonlight, add the gaming PC and complete its supported PIN pairing. Razer Cortex Remote Play must be hosting on the gaming PC.
+4. Select **Open Moonlight to pair**. In Moonlight, add the gaming PC and complete its supported PIN pairing. Orbit Host must be running on the gaming PC; select Start hosting there.
 5. Return to Orbit and refresh. Orbit uses Moonlight's real paired-host app list. Select Desktop or another exposed app to start a stream. If pairing or the host connection is unavailable, Orbit shows that state and does not invent a library.
 
 The host check currently uses the default GameStream HTTP port **47989**. Custom host ports and internet streaming are not implemented. A local IPv4 address is preferable if PC-name resolution is unreliable.
 
-The existing browser-based Orbit host on the gaming PC is not required for this launcher. The launcher talks to Razer's compatible streaming host through bundled Moonlight. Streaming does not use the old `127.0.0.1:38741` browser preview.
+The existing browser-based Orbit host on the gaming PC is not required for this launcher. The launcher talks to Orbit Host’s Sunshine backend through bundled Moonlight. Streaming does not use the old `127.0.0.1:38741` browser preview.
 
 `Install Legion Go Shortcut.ps1` can create an optional desktop shortcut after extraction. It does not add Windows startup entries.
 

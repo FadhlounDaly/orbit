@@ -16,3 +16,6 @@ node_modules/
 *.pfx
 .env
 .env.*
+
+# Verified streaming runtime; source stays in runtime/resources/app
+/backend/

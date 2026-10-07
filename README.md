@@ -1,6 +1,10 @@
 # Orbit
 
-Orbit is a Windows launcher for a gaming PC and Lenovo Legion Go. The handheld launcher uses Moonlight to pair with a compatible streaming host. A separate local PC preview is included in `host/`.
+Orbit is a Windows launcher for a gaming PC and Lenovo Legion Go. The handheld launcher uses Moonlight to pair with a compatible streaming host. Orbit Host manages a separate Sunshine backend on the gaming PC. The older local preview remains in `host/`.
+
+## Set up the gaming PC
+
+Run `Setup Orbit Host.ps1`, then **Start Orbit Host.cmd**. Orbit provides start/stop hosting, Desktop and optional Steam Big Picture sharing, and approval of pending Moonlight PIN requests. See [HOST.md](HOST.md) for setup, migration, security, and validation.
 
 ## Install on the Legion Go
 
@@ -8,7 +12,7 @@ Orbit is a Windows launcher for a gaming PC and Lenovo Legion Go. The handheld l
 2. Right-click `Setup Orbit.ps1` and select **Run with PowerShell**. The setup downloads pinned Electron and Moonlight releases from their official GitHub repositories and checks SHA-256 hashes before extracting them.
 3. Double-click **Start Orbit.cmd**.
 4. Select **Set up connection** and enter your gaming PC's local IPv4 address or name.
-5. Open Moonlight and complete PIN pairing with your compatible streaming host. Keep both devices on the same LAN.
+5. Open Moonlight and complete PIN pairing inside Orbit Host on the gaming PC. Keep both devices on the same LAN.
 6. Refresh Orbit and launch an exposed app or Desktop.
 
 If Windows blocks the script, do not disable system-wide execution policy. Review the script and use your normal approved script-running method.
@@ -27,7 +31,9 @@ See [LEGION-GO.md](LEGION-GO.md) for profiles, limitations, and original validat
 
 - `runtime/resources/app/`: Electron launcher source, UI, and original artwork.
 - `host/`: local PC preview and read-only host bridge.
-- `Setup Orbit.ps1`: repeatable dependency download and verification.
+- `Setup Orbit.ps1`: handheld dependency download and verification.
+- `Setup Orbit Host.ps1`: verified portable Sunshine streaming component.
+- `runtime/resources/app/host-*.cjs` and `host-ui/`: native Orbit host management.
 - Downloaded runtimes, Moonlight, profiles, caches, and pairing credentials are excluded from Git.
 - Each device must complete its own Moonlight pairing; do not copy pairing credentials between devices.
 
