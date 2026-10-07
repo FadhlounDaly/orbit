@@ -26,7 +26,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md) for the current control-plane model.
 - Profiles, pairing keys, certificates, encrypted management credentials, and diagnostics live under ignored `data/host/`. Downloaded binaries live under ignored `backend/`.
 - UPnP is disabled. Setup does not modify firewall rules, router settings, drivers, Windows execution policy, or existing services.
 - If firewall access is required, approve only the intended local-network access after reviewing the proposed rule. Orbit does not add one.
-- The lite Sunshine bundle does not install controller drivers. Hardware controller forwarding may require a supported driver and separate approval.
+- The lite Sunshine bundle does not install controller drivers. Run `Setup Orbit Controllers.ps1` once on Zeiron to install the verified controller forwarding driver. Windows approval is for this one-time driver setup.
 
 ## Migration from Cortex
 
@@ -45,3 +45,5 @@ The host owns discovery and launch targets for Steam, registered Xbox PC games, 
 Artwork from installed files and the public Microsoft catalog is cached locally; network failures preserve installed art. Library and game details require the already-linked client credential over pinned HTTPS. Update both Orbit Host and the handheld client for library browsing and Play. Device trust and streaming pairings survive source updates.
 
 Emulated games use host-owned profiles in `data/host/library-profiles.json`. A Ryujinx profile names a local root, relative executable, ROM, data directory, and optional artwork. Orbit validates those paths under the root and sends only the opaque game ID from the handheld. The existing save directory is retained. Windows forced administrator compatibility can block direct launches; Orbit reports that failure rather than elevating the host.
+
+Handheld sessions temporarily fit the primary monitor to a supported mode near the chosen profile (1920×1200 for Balanced). Orbit saves the original display mode before changing it and restores it when the session ends, including failed launches and recovery after a host restart. Games start as the signed-in user; Play does not open an administrator approval window. Games that genuinely require administrator-only setup must complete that setup on Zeiron first.

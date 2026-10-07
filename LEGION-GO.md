@@ -24,7 +24,7 @@ Trust persists in a local encrypted device registry. Choose a game and Play; use
 | Smooth | 1920 × 1200 | 120 fps | 35 Mbps |
 | Sharp | 2560 × 1600 | 60 fps | 35 Mbps |
 
-Profiles describe requests to the streaming engine and need testing on the actual display and network.
+Profiles request stream quality and a supported handheld-shaped Windows display mode. Orbit restores Zeiron’s original display mode after the session. Controller forwarding needs the one-time host driver setup; the client streams gamepad input to an Xbox controller on Zeiron.
 
 ## Local data and isolation
 

@@ -111,11 +111,11 @@ test('host emulation profiles expose only opaque IDs and preserve the configured
 test('blocked Windows launches explain the compatibility setting instead of silently failing',async t=>{
  const root=fixture(t),exe=path.join(root,'game.exe');write(exe);
  const launcher=new GameLaunchManager({spawnProcess:()=>{const child=new EventEmitter();queueMicrotask(()=>child.emit('error',{code:'EACCES'}));return child;}});
- await assert.rejects(launcher.launch({id:'local:'+'c'.repeat(64),name:'Example',launchable:true,launch:{type:'local',exe,cwd:root}}),/administrator compatibility/);
+ await assert.rejects(launcher.launch({id:'local:'+'c'.repeat(64),name:'Example',launchable:true,launch:{type:'local',exe,cwd:root}}),/administrator approval/);
 });
-test('Windows fallback uses its normal launch surface with encoded host-owned data and never requests elevation',async t=>{
- const root=fixture(t),exe=path.join(root,'Ryujinx.exe');write(exe);let script;
- const launcher=new GameLaunchManager({platform:'win32',spawnProcess:()=>{const child=new EventEmitter();queueMicrotask(()=>child.emit('error',{code:'EACCES'}));return child;},execute:(file,args,options,done)=>{assert.equal(options.shell,false);assert.equal(args[1],'-EncodedCommand');script=Buffer.from(args[2],'base64').toString('utf16le');done(null,'1234\r\n');}});
- const value=await launcher.launch({id:'local:'+'d'.repeat(64),name:'Zelda',launchable:true,launch:{type:'local',exe,cwd:root,args:['-r',root,'--fullscreen',path.join(root,'Zelda.nsp')]}});
- assert.equal(value.state,'PROCESS_STARTED');assert.equal(script.includes('-Verb'),false);assert.equal(script.includes('Start-Process @o'),true);assert.equal(script.includes(exe),false);
+test('local game launch uses normal user permissions and never invokes an elevation fallback',async t=>{
+ const root=fixture(t),exe=path.join(root,'game.exe');write(exe);let options;let fallback=false;
+ const launcher=new GameLaunchManager({platform:'win32',spawnProcess:(file,args,o)=>{options=o;const child=new EventEmitter();queueMicrotask(()=>child.emit('error',{code:'EACCES'}));return child;},execute:()=>{fallback=true;}});
+ await assert.rejects(launcher.launch({id:'local:'+'d'.repeat(64),name:'Example',launchable:true,launch:{type:'local',exe,cwd:root}}),/administrator approval/);
+ assert.equal(options.env.__COMPAT_LAYER,'RunAsInvoker');assert.equal(fallback,false);
 });

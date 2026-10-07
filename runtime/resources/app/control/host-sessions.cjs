@@ -66,7 +66,7 @@ class SessionManager {
   snapshot(){return {state:this.state,error:this.error,session:this.current?{
     id:this.current.id,intent:this.current.intent,clientDeviceId:this.current.clientDeviceId,
     targetType:this.current.gameId?'game':'intent',targetId:this.current.gameId||this.current.intent,game:this.current.game||null,streamProfile:this.current.profile,
-    displayPolicy:'preserve-physical',startedAt:this.current.startedAt,currentState:this.state}:null};}
+    displayPolicy:this.current.previousSystemState?.policy||'preserve-physical',startedAt:this.current.startedAt,currentState:this.state}:null};}
   active(){return Boolean(this.current)||this.state!=='IDLE';}
   expired(){return this.current&&this.clock()-this.current.heartbeat>=45000;}
   async start({intent,profile='balanced',resumeId,gameId},clientDeviceId,authorized=()=>true){return this.serial(async()=>{

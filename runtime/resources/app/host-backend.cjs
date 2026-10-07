@@ -101,6 +101,7 @@ class HostBackend {
     const q=value=>value.replaceAll('\\','/');
     const config=[
       'sunshine_name = Orbit — '+os.hostname(), 'port = '+this.basePort,
+      'controller = enabled', 'gamepad_driver = vigembus', 'gamepad = x360',
       'upnp = disabled', 'origin_web_ui_allowed = pc', 'min_log_level = 2',
       'file_apps = '+q(paths.apps), 'credentials_file = '+q(paths.state),
       'file_state = '+q(paths.state), 'cert = '+q(paths.cert), 'pkey = '+q(paths.key),

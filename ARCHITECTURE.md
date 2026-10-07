@@ -36,7 +36,7 @@ Connection loss enters RECONNECTING. A validated resume keeps the session identi
 
 A session records its client identity, intent, profile, start time, heartbeat, and previous system state. The restoration journal is written atomically under ignored `data/host/` before any display preparation. Startup replays unfinished restoration. Graceful shutdown awaits restoration before stopping the owned backend. A periodic host tick expires sessions without relying on client/UI polling; expired heartbeats cannot revive them.
 
-Current display policy explicitly preserves the physical monitor. The PreserveDisplay adapter makes no Windows changes. Journal ordering, restoration failures and crash recovery are verified with injected display adapters; they do not establish working Windows display switching. The lifecycle is ready for a separately tested Windows DisplayManager. The host can now launch a discovered game during stream preparation. Game launches are independent of display switching. Store launches report REQUESTED; standalone launches report PROCESS_STARTED after the process spawns. These are not claims that a game reached its menu or that media/input is healthy. Games are not terminated when a stream ends.
+The Windows display adapter snapshots the primary monitor mode to the session journal before changing it. It selects a supported mode close to the handheld profile and restores the exact previous mode on disconnect, failure, shutdown or recovery after a crash. It changes neither monitor topology nor global display preferences. Non-Windows/testing sessions retain PreserveDisplay. Store launches report REQUESTED; standalone launches report PROCESS_STARTED after spawn, with normal user permissions and no ShellExecute elevation fallback. These states do not prove that game video or input is healthy. Games are not terminated when a stream ends.
 
 STREAMING is based on fresh host-side protocol connection events, never merely process startup. Sunshine's current log events do not attribute the connection to an Orbit device. This remains a single-client installation assumption, not authenticated attribution or proof of picture/audio/controller health. Ending a lease does not forcibly quit the host application or revoke the engine's pairing.
 
@@ -61,11 +61,11 @@ SystemObserver reports host name, uptime, sampled CPU utilization, RAM and IPv4 
 | AudioManager | Observe first; reversible output/mute policy with restoration later |
 | Controller awareness | Report backend/input health without replacing transport |
 
-Legion Native, Performance and Battery display intents belong to the host policy layer once a real display adapter is available. Current Balanced/Smooth/Sharp profiles remain stream requests only; they do not claim the Windows capture display has changed.
+Balanced/Smooth/Sharp profiles also guide the Windows capture display during a session. Only advertised, handheld-shaped modes are used; the original mode is restored afterward.
 
 ## Security, testing and deployment
 
-TCP 38742 is the certificate-pinned authenticated control channel. Existing program-specific LAN firewall access is sufficient; no new rule is introduced by this update. Sunshine management stays local-only, UPnP disabled. Setup installs no driver, startup service or router changes.
+TCP 38742 is the certificate-pinned authenticated control channel. Existing program-specific LAN firewall access is sufficient; no new rule is introduced by this update. Sunshine management stays local-only, UPnP disabled. Base setup installs no driver, startup service or router changes. The separate Setup Orbit Controllers.ps1 installs the pinned, signature-checked ViGEmBus driver on the host for Xbox controller forwarding.
 
 `node --test tests/*.test.cjs` verifies enrollment proofs, replay/expiration/limits, TLS pinning before credential transmission, device trust removal, host serialization, profile validation, restoration ordering/replay/failure, expiry, fresh streaming observation and client recovery. TLS tests need OpenSSL and skip without it. Mock native UI checks and isolated real engine pairing are separate from physical Legion Go stream acceptance.
 

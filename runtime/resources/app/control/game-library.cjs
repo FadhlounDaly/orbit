@@ -134,21 +134,8 @@ class GameLaunchManager{
    const existing=this.active.get(target.exe);
    if(existing&&existing.exitCode==null&&!existing.killed)return {state:'PROCESS_STARTED',name:record.name};
    return new Promise((resolve,reject)=>{
-    const child=this.spawnProcess(target.exe,target.args||[],{cwd:target.cwd,shell:false,detached:false,windowsHide:false,stdio:'ignore'});
-    child.once('error',error=>{
-     if(error.code==='EACCES'&&this.platform==='win32'){
-      // Use Windows' normal ShellExecute launch surface; never request RunAs.
-      // Data comes only from the host catalog, not a remote command or argument.
-      const payload=Buffer.from(JSON.stringify({exe:target.exe,cwd:target.cwd,args:target.args||[]})).toString('base64');
-      const script="$ErrorActionPreference='Stop';$p=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"+payload+"'))|ConvertFrom-Json;$o=@{FilePath=$p.exe;WorkingDirectory=$p.cwd;PassThru=$true};if($p.args.Count){$o.ArgumentList=($p.args|ForEach-Object{'\"'+$_+'\"'})};$g=Start-Process @o;$g.Id";
-      const encoded=Buffer.from(script,'utf16le').toString('base64');
-      this.execute(path.join(this.systemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',encoded],{windowsHide:true,shell:false,timeout:15000},(e,out)=>{
-       if(e||!/^\s*\d+\s*$/.test(out||''))return reject(Error('Windows blocked this game. Check its administrator compatibility setting on Zeiron.'));
-       resolve({state:'PROCESS_STARTED',name:record.name});
-      });return;
-     }
-     reject(Error(error.code==='EACCES'?'Windows blocked this game. Check its administrator compatibility setting on Zeiron.':'Zeiron could not start this game ('+(error.code||'unknown error')+')'));
-    });
+    const child=this.spawnProcess(target.exe,target.args||[],{cwd:target.cwd,shell:false,detached:false,windowsHide:false,stdio:'ignore',env:{...process.env,__COMPAT_LAYER:'RunAsInvoker'}});
+    child.once('error',error=>reject(Error(error.code==='EACCES'?'Windows blocked this game. Open its setup once on Zeiron; Orbit will not request administrator approval during Play.':'Zeiron could not start this game ('+(error.code||'unknown error')+')')));
     child.once('exit',()=>{if(this.active.get(target.exe)===child)this.active.delete(target.exe);});
     child.once('spawn',()=>{this.active.set(target.exe,child);child.unref();resolve({state:'PROCESS_STARTED',name:record.name});});
    });
