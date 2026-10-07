@@ -9,10 +9,10 @@ Orbit now has a native host interface on the gaming PC and a handheld interface 
 3. Stop any existing Cortex/Sunshine hosting session before opening Orbit Host. Orbit refuses occupied ports and never stops another host automatically.
 4. Desktop is shared by default. Before starting, optionally select Steam Big Picture and save shared apps.
 5. On the Legion Go, open Orbit. It resolves Zeiron from its saved address or ZEIRON-CORE.
-6. Select Link Legion Go in Orbit Host, then paste its temporary code into Link Zeiron on the handheld. Orbit coordinates pairing and verifies trust.
+6. Select Link Legion Go in Orbit Host, then enter its eight-digit code into Link Zeiron on the handheld. Orbit coordinates pairing and verifies trust.
 7. When Orbit shows Zeiron Online, select Desktop and Connect.
 
-Close the Orbit Host window or select Stop hosting to stop its own backend. No startup service is registered.
+Select Stop hosting to stop streaming while the Orbit control channel remains available. Closing Orbit Host restores its session state before stopping the owned backend. No startup service is registered.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for the current control-plane model.
 

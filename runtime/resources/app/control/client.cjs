@@ -2,6 +2,7 @@
 const crypto=require('node:crypto');
 const {Machine,session}=require('./model.cjs');
 const transport=require('./transport.cjs');
+const {enroll}=require('./devices.cjs');
 class ClientCoordinator{
  constructor({registry,adapter,legacyHost='',profile='balanced',resolve=transport.resolve,request=transport.request,notify=()=>{},schedule=setTimeout,cancel=clearTimeout}){
   this.registry=registry;this.adapter=adapter;this.legacyHost=legacyHost;this.profile=profile;
@@ -54,6 +55,7 @@ class ClientCoordinator{
    this.machine.move('TRUSTED');
    const status=await this.remote('/status');
    if(!status.online){this.machine.move('OFFLINE','Open Orbit on Zeiron to bring it online.');return this.snapshot();}
+   if(status.ready===false){this.machine.move('ERROR','Zeiron is online, but streaming is not ready. Check Orbit Host.');return this.snapshot();}
    try{
     await this.adapter.list(this.address);
    }catch(e){
@@ -73,16 +75,14 @@ class ClientCoordinator{
  }
  async link(code){
   if(this.session||this.refreshing||this.machine.state==='PAIRING'||this.connectOperation)throw Error('Wait for the current operation to finish');
-  const invitation=transport.decodeInvitation(code);
+  if(typeof code!=='string'||!/^\d{8}$/.test(code))throw Error('Enter the eight-digit code shown on Zeiron');
   if(!this.address)await this.refresh();
   if(!this.address)throw Error('Zeiron is offline');
   this.machine.move('PAIRING');
   let stopPair=()=>{};
   try{
-   const value=await this.request({address:this.address,fp:invitation.fp,token:null,endpoint:'/link',method:'POST',
-    body:{clientId:this.registry.data.device.id,code:invitation.token}});
-   if(value.id!==invitation.id)throw Error('Zeiron identity does not match its linking code');
-   this.registry.trustHost({id:value.id,fp:invitation.fp,token:value.token,hostname:'ZEIRON-CORE',lastAddress:this.address});
+   const value=await enroll({code,clientId:this.registry.data.device.id,address:this.address,request:this.request});
+   this.registry.trustHost({id:value.id,fp:value.fp,token:value.token,hostname:'ZEIRON-CORE',lastAddress:this.address});
    try{await this.adapter.list(this.address);}
    catch{
     const pin=String(crypto.randomInt(0,10000)).padStart(4,'0');
@@ -121,10 +121,10 @@ class ClientCoordinator{
  }
  async launch(){
   const active=this.session,generation=++this.generation;
-  const lease=await this.remote('/sessions/start','POST',{intent:active.intent,resumeId:active.id});
+  const lease=await this.remote('/sessions/start','POST',{intent:active.intent,resumeId:active.id,profile:this.profile});
   if(this.closed||this.session!==active){try{await this.remote('/sessions/end','POST',{id:lease.id});}catch{}return;}
   active.id=lease.id;active.started=Date.now();
-  this.adapter.start(this.address,lease.target,this.profile,event=>this.exited(event,generation));
+  this.adapter.start(this.address,lease.target,lease.profile||this.profile,event=>this.exited(event,generation));
   this.monitor(generation);
  }
  monitor(generation){
@@ -172,7 +172,7 @@ class ClientCoordinator{
    try{
     await this.locate();
     if(this.closed||this.userStopped||this.session!==expectedSession||this.generation!==expectedGeneration)return;
-    const status=await this.remote('/status');if(!status.online)throw Error('Zeiron is offline');
+    const status=await this.remote('/status');if(!status.online||status.ready===false)throw Error('Zeiron streaming is not ready');
     if(this.closed||this.userStopped||this.session!==expectedSession||this.generation!==expectedGeneration)return;
     this.machine.move('CONNECTING');await this.launch();
    }catch(e){

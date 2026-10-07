@@ -8,13 +8,13 @@ Your personal connection between **Zeiron** and **Legion Go**. Orbit owns device
 2. Open **Start Orbit Host.cmd**; hosting starts automatically.
 3. Stop any other host occupying the streaming ports first; Orbit does not stop it automatically.
 4. Approve the reviewed local-network firewall access for the Legion Go, including Orbit's TCP 38742 control channel. Setup does not add rules.
-5. Select **Link Legion Go** to generate the temporary Orbit code.
+5. Select **Link Legion Go** to generate the eight-digit pairing code.
 
 ## Legion Go
 
 1. Review and run `Setup Orbit.ps1`, then open **Start Orbit.cmd**.
 2. Orbit resolves Zeiron using its saved device information or ZEIRON-CORE on the LAN.
-3. Select **Link Zeiron** and paste the temporary code from Orbit on the PC. Orbit coordinates streaming trust; there is no manual backend setup.
+3. Select **Link Zeiron** and enter the eight-digit code from Orbit on the PC. Orbit coordinates streaming trust; there is no manual backend setup.
 4. Once Zeiron shows **Online**, choose **Desktop** and press **Connect**.
 
 After linking, trust persists locally. The same Connect action starts future sessions directly. Orbit observes connection state and retries unexpected disconnects up to three times. Ending a session returns to Orbit without quitting the host app.
