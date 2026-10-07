@@ -76,8 +76,22 @@ function renderCards(){
  $('link').disabled=busy||active();$('retry').hidden=!libraryError;$('retry').disabled=loadingLibrary;
  renderFeature();
 }
+function renderHost(s){
+ const info=s.trusted?s.hostInfo:null,system=info?.system,online=s.hostOnline&&s.state!=='OFFLINE',fresh=online&&info&&Date.now()-Date.parse(info.receivedAt)<30000;
+ const gib=n=>Number.isFinite(n)?(n/1073741824).toFixed(1)+' GB':'—';
+ const cpu=system?.cpu,memory=system?.memory,graphics=system?.hardware?.graphics||[];
+ setText('pc-health',online?(s.state==='STREAMING'?'Playing on Zeiron':s.state==='READY'?'Ready to play':'Host needs attention'):'Zeiron offline');$('pc-health').classList.toggle('healthy',online&&s.state==='READY');
+ setText('pc-updated',info?(fresh?'Live host information':'Last known host information'):'Link Zeiron to see your PC');
+ setText('pc-cpu',cpu?.model||'Unavailable');setText('pc-cpu-detail',cpu?(cpu.logicalProcessors+' logical processors · '+(fresh&&Number.isFinite(cpu.utilizationPercent)?Math.round(cpu.utilizationPercent)+'% in use':'Usage unavailable')):'Waiting for Zeiron');
+ setText('pc-memory',gib(memory?.totalBytes));setText('pc-memory-detail',memory?(fresh?gib(memory.usedBytes)+' in use':'Usage unavailable'):'Waiting for Zeiron');
+ $('cpu-usage-bar').style.width=(fresh&&Number.isFinite(cpu?.utilizationPercent)?cpu.utilizationPercent:0)+'%';$('memory-usage-bar').style.width=(fresh&&memory?.totalBytes?Math.min(100,memory.usedBytes/memory.totalBytes*100):0)+'%';
+ const primaryGpu=graphics.find(g=>/NVIDIA|Radeon|Arc\(/i.test(g.name))||graphics.find(g=>!/virtual|remote|basic display/i.test(g.name))||graphics[0];
+ setText('pc-gpu',primaryGpu?.name||'Unavailable');setText('pc-gpu-detail',primaryGpu?'Driver '+(primaryGpu.driverVersion||'unavailable')+' · GPU usage unavailable':'Graphics details unavailable');
+ setText('pc-latency',fresh?info.controlRoundTripMs+' ms · host response':'Unavailable');setText('pc-streaming',online?(info?.streaming?.healthy?'Ready':info?.streaming?.running?'Needs attention':'Stopped'):'Offline');
+ const uptime=system?.uptimeSeconds;setText('pc-uptime',fresh&&Number.isFinite(uptime)?Math.floor(uptime/3600)+'h '+Math.floor(uptime%3600/60)+'m':'—');setText('pc-stream-profile',profileLabels[s.profile]||profileLabels.balanced);
+}
 function render(s){
- const old=current;current=s;
+ const old=current;current=s;renderHost(s);
  $('stream-transition').hidden=!ACTIVE.has(s.state);setText('transition-title',s.session?.game?.name||selected()?.name||'Your PC');setText('transition-description',s.state==='RECONNECTING'?'Restoring your connection…':s.state==='STREAMING'?'Your game is ready. Enjoy.':'Preparing your handheld session…');
  setText('status',labels[s.state]||'Checking');$('status-dot').className='status-dot '+(s.state==='READY'||s.state==='STREAMING'?'online':s.hostOnline?'attention':'');
  setText('connection-detail',s.trusted?(s.state==='READY'?'Linked to Zeiron. Ready to play.':s.reason||'Your device is linked to Zeiron.'):s.reason||'Link Zeiron once to play your PC games.');

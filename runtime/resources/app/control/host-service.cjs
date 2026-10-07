@@ -4,6 +4,7 @@ const {CONTROL_PORT,fingerprint,isPrivate}=require('./transport.cjs');
 const {publicSessions}=require('./model.cjs');
 const {DeviceManager}=require('./devices.cjs');
 const {SessionManager}=require('./host-sessions.cjs');
+const {HostHardware}=require('./host-hardware.cjs');
 const {SystemObserver}=require('./system-observer.cjs');
 const {GameLibrary,GameLaunchManager}=require('./game-library.cjs');
 class HostService{
@@ -11,7 +12,7 @@ class HostService{
   this.backend=backend;this.registry=registry;this.port=port;this.clock=clock;
   this.server=null;this.fp=null;this.timer=null;this.expiring=false;
   this.devices=new DeviceManager({registry,clock});
-  this.library=library;this.sessions=new SessionManager({backend,clock,journal,display,graphics,library,launcher});this.system=new SystemObserver();
+  this.library=library;this.sessions=new SessionManager({backend,clock,journal,display,graphics,library,launcher});this.system=new SystemObserver();this.hardware=new HostHardware();
  }
  async start(){
   if(this.server)return;
@@ -52,7 +53,7 @@ class HostService{
   const s=await this.backend.status();
   return {version:1,id:this.registry.data.device.id,name:'Zeiron',online:true,ready:s.running&&s.healthy!==false,
    sessions:publicSessions(s.apps.map(a=>a.name)),...await this.sessions.status(),
-   system:this.system.snapshot(),streaming:{installed:s.installed,running:s.running,healthy:s.healthy===true}};
+   system:{...this.system.snapshot(),hardware:await this.hardware.snapshot()},streaming:{installed:s.installed,running:s.running,healthy:s.healthy===true}};
  }
  async handle(req,res){
   const address=(req.socket.remoteAddress||'').replace(/^::ffff:/,'');

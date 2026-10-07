@@ -10,7 +10,7 @@ class SystemObserver {
     const utilization=delta>0?Math.max(0,Math.min(100,100*(1-(sum.idle-this.previous.idle)/delta))):null;
     this.previous=sum;
     return {name:'Zeiron',hostname:os.hostname(),uptimeSeconds:os.uptime(),sampledAt:new Date().toISOString(),
-      cpu:{utilizationPercent:utilization},memory:{totalBytes:os.totalmem(),usedBytes:os.totalmem()-os.freemem()},
+      cpu:{model:cpus[0]?.model||null,logicalProcessors:cpus.length,utilizationPercent:utilization},memory:{totalBytes:os.totalmem(),usedBytes:os.totalmem()-os.freemem()},
       network:Object.entries(os.networkInterfaces()).flatMap(([name,items])=>items.filter(i=>!i.internal&&i.family==='IPv4').map(i=>({name,address:i.address}))),
       gpu:{utilizationPercent:null,memoryUsedBytes:null,temperatureCelsius:null},cpuTemperatureCelsius:null,
       activeUser:null,foregroundApplication:null,runningGame:null,
