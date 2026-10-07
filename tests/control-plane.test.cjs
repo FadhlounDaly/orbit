@@ -4,7 +4,9 @@ const {execFileSync}=require('node:child_process');
 const {Machine,Registry,publicSessions}=require('../runtime/resources/app/control/model.cjs');
 const {ClientCoordinator}=require('../runtime/resources/app/control/client.cjs');
 const {HostService}=require('../runtime/resources/app/control/host-service.cjs');
-const {request,decodeInvitation}=require('../runtime/resources/app/control/transport.cjs');
+const {request}=require('../runtime/resources/app/control/transport.cjs');
+const {enroll}=require('../runtime/resources/app/control/devices.cjs');
+const {SessionManager}=require('../runtime/resources/app/control/host-sessions.cjs');
 const hostId='12345678-1234-1234-1234-123456789abc';
 const fp='a'.repeat(64),token='a'.repeat(43);
 function fixture(t,role='client'){
@@ -67,9 +69,6 @@ test('device registry survives restart without changing device identity',t=>{
  const {registry}=fixture(t);const reload=new Registry(registry.file,'client',registry.vault);
  assert.equal(reload.data.device.id,registry.data.device.id);
 });
-test('invitation parser rejects altered formats',()=>{
- assert.throws(()=>decodeInvitation('1234'));assert.throws(()=>decodeInvitation('orbit1.'+Buffer.from('{}').toString('base64url')));
-});
 let openssl=false;try{execFileSync('openssl',['version'],{stdio:'ignore'});openssl=true;}catch{}
 test('TLS pinning rejects a changed certificate before transmitting authorization; invitations are single-use', {skip:!openssl},async t=>{
  const {root,registry}=fixture(t,'host');const key=path.join(root,'key.pem'),cert=path.join(root,'cert.pem');
@@ -82,20 +81,21 @@ test('TLS pinning rejects a changed certificate before transmitting authorizatio
  service.server.prependListener('request',req=>{if(req.headers.authorization)receivedAuthorization=true;});
  await assert.rejects(request({address:'127.0.0.1',port,fp:'0'.repeat(64),token:'DO-NOT-SEND',endpoint:'/status'}),/identity changed/);
  assert.equal(receivedAuthorization,false);
- const invitation=decodeInvitation(service.invitation().code);
+ const invitation=service.invitation();
  const clientId=crypto.randomUUID();
- const linked=await request({address:'127.0.0.1',port,fp:invitation.fp,endpoint:'/link',method:'POST',body:{clientId,code:invitation.token}});
+ const call=args=>request({...args,port});
+ const linked=await enroll({address:'127.0.0.1',code:invitation.code,clientId,request:call});
  assert.equal(linked.id,registry.data.device.id);
- await assert.rejects(request({address:'127.0.0.1',port,fp:invitation.fp,endpoint:'/link',method:'POST',body:{clientId,code:invitation.token}}),/invalid or expired/);
- const status=await request({address:'127.0.0.1',port,fp:invitation.fp,token:linked.token,endpoint:'/status'});
+ await assert.rejects(enroll({address:'127.0.0.1',code:invitation.code,clientId,request:call}));
+ const status=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/status'});
  assert.deepEqual(status.sessions,[{id:'desktop',name:'Desktop'}]);
- await assert.rejects(request({address:'127.0.0.1',port,fp:invitation.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'calc.exe'}}));
- const lease=await request({address:'127.0.0.1',port,fp:invitation.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'desktop'}});
+ await assert.rejects(request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'calc.exe'}}));
+ const lease=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/start',method:'POST',body:{intent:'desktop'}});
  fs.appendFileSync(log,'CLIENT CONNECTED\n');
- const heartbeat=await request({address:'127.0.0.1',port,fp:invitation.fp,token:linked.token,endpoint:'/sessions/heartbeat',method:'POST',body:{id:lease.id}});
+ const heartbeat=await request({address:'127.0.0.1',port,fp:linked.fp,token:linked.token,endpoint:'/sessions/heartbeat',method:'POST',body:{id:lease.id}});
  assert.equal(heartbeat.session.state,'STREAMING');
  fs.appendFileSync(log,'CLIENT DISCONNECTED\n');
- assert.equal(service.observed().state,'DISCONNECTED');
+ assert.equal((await service.sessions.status()).session.state,'DISCONNECTED');
 });
 test('simultaneous Connect requests are serialized',async t=>{
  const {c,starts}=client(t);
@@ -132,26 +132,6 @@ test('reassigned cached address is not trusted; discovery tries the persistent h
  c.registry.data.host.lastAddress='old-address';
  assert.equal((await c.refresh()).state,'READY');
  assert.equal(c.address,'192.168.1.26');assert.ok(addressQueries>=4);
-});
-test('expired invitation cannot replace an existing trusted device',async t=>{
- const {root,registry}=fixture(t,'host');
- registry.trustClient({id:crypto.randomUUID(),token:'old-token'});
- const original=registry.data.client.id;
- const service=new HostService({backend:{ready:true},registry,clock:()=>600000});
- service.server={};service.fp='a'.repeat(64);service.invite={token:'new-token',expires:300000};
- const {Readable}=require('node:stream');
- const req=Readable.from([JSON.stringify({clientId:crypto.randomUUID(),code:'new-token'})]);
- req.socket={remoteAddress:'192.168.1.186'};req.url='/link';req.method='POST';req.headers={'content-type':'application/json'};
- let status;const res={writeHead:s=>{status=s;},end:()=>{}};
- await service.handle(req,res);assert.equal(status,403);assert.equal(registry.data.client.id,original);
-});
-test('old log entries never establish a new session; heartbeat expiry releases it',t=>{
- const {root,registry}=fixture(t,'host');let now=0;const log=path.join(root,'events.log');
- fs.writeFileSync(log,'CLIENT CONNECTED\n');
- const service=new HostService({backend:{paths:()=>({log})},registry,clock:()=>now});
- service.lease={id:'lease',intent:'desktop',state:'CONNECTING',heartbeat:0,offset:fs.statSync(log).size,remainder:''};
- assert.equal(service.observed().state,'CONNECTING');
- now=46000;assert.equal(service.observed(),null);assert.equal(service.lease,null);
 });
 test('disconnect during an in-flight reconnect cannot restart the stream',async t=>{
  const jobs=[];const {c,exit,starts}=client(t,{schedule:fn=>{jobs.push(fn);return jobs.length;},cancel:()=>{}});

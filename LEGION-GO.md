@@ -8,7 +8,7 @@ Orbit is the personal client for Zeiron. It owns device linking, session selecti
 2. In `C:\Apps\Orbit`, inspect local changes before updating from the reviewed Git branch. Preserve `data/`, `moonlight/`, and `runtime/` binaries; do not reset or delete local pairing data.
 3. Read `README.md`, `ARCHITECTURE.md`, and the setup script before running setup. Setup downloads verified portable dependencies if needed. Do not weaken Windows execution policy.
 4. Open **Start Orbit.cmd**. Orbit resolves ZEIRON-CORE or its saved trusted address on the home LAN.
-5. Open Orbit Host on Zeiron and select **Link Legion Go**. Paste the temporary code into **Link Zeiron** on the handheld. Keep the code out of GitHub, logs, and chat.
+5. Open Orbit Host on Zeiron and select **Link Legion Go**. Enter the eight-digit code into **Link Zeiron** on the handheld. Keep the code out of GitHub, logs, and chat.
 6. Orbit reuses valid existing streaming trust or coordinates normal PIN pairing internally. A temporary engine pairing window may appear; no manual backend configuration is required.
 7. When Zeiron shows **Online**, select **Desktop** and press **Connect**.
 

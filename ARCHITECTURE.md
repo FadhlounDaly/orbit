@@ -1,68 +1,76 @@
-# Orbit control plane
+# Orbit host controller
 
-This is personal software for **Zeiron (host)** and **Legion Go (client)**. There are no accounts, arbitrary host enrollment, or public-service dependencies.
+Orbit is personal software for Zeiron and the Legion Go. It has no accounts, tenant model, public enrollment service, or arbitrary remote command endpoint. Moonlight and Sunshine remain unmodified streaming infrastructure.
 
 ## Ownership
 
-| Responsibility | Owner / module |
+| Responsibility | Component |
 |---|---|
-| Persistent device identity and trust | Orbit `control/model.cjs`, encrypted device registry |
-| Host discovery | Orbit `ClientCoordinator.locate`: stored LAN address, persistent ZEIRON-CORE hostname, existing address preference |
-| Linking and backend pairing orchestration | Orbit coordinator and `HostService`; Moonlight/Sunshine retain their cryptographic streaming pairing |
-| Host configuration | Orbit `HostBackend`; isolated apps, ports, credentials and runtime |
-| User intents and session definitions | Orbit `SESSIONS`: `desktop` and `steam` |
-| Connection/recovery state | Orbit `Machine` and `ClientCoordinator` |
-| Moonlight invocation | Only `MoonlightAdapter`, fixed list/pair/stream operations and allowlisted targets |
-| Sunshine observation | Only host backend/control service; authenticated local API plus incremental connection events from its log |
-| Streaming protocol, decode, audio, controller transport | Unmodified Moonlight |
-| Capture, encode, input injection and application streaming | Unmodified Sunshine |
-| UI | Orbit native client and host windows |
+| Persistent identity and encrypted registry | `control/model.cjs` |
+| Enrollment, device credential issuance, metadata and Orbit trust removal | `control/devices.cjs` DeviceManager |
+| Personal host resolution and client connection recovery | `control/client.cjs` ClientCoordinator |
+| Semantic authenticated API | `control/host-service.cjs` HostService |
+| Host preparation, session identity, expiration, recovery and restoration | `control/host-sessions.cjs` SessionManager |
+| Streaming observations | StreamObserver behind the host session controller |
+| Streaming process, isolated configuration and local management API | `host-backend.cjs` HostBackend |
+| Structured machine sampling | `control/system-observer.cjs` SystemObserver |
+| Streaming runtime invocation | `control/moonlight.cjs` MoonlightAdapter |
+| Video/audio/input transport | Stock Moonlight and Sunshine |
+| Rendering and user input | Sandboxed Orbit windows; no orchestration in renderer code |
 
-The renderer receives Orbit states and session IDs. It cannot execute commands, select executables, address backend administration APIs, or choose arbitrary Sunshine application IDs.
+The host accepts an intent and profile ID, validates them, prepares the session, and returns the internally mapped stream target and approved profile. The client invokes its adapter only after host readiness. The protocol retains the legacy session response shape so already-linked clients can connect using the default Balanced profile during migration. Both sides must update for new enrollment.
 
-## Connection state
+## Eight-digit enrollment
 
-`UNKNOWN → DISCOVERING → HOST_FOUND → UNPAIRED → PAIRING → TRUSTED → READY → CONNECTING → STREAMING`
+The host generates a cryptographically random eight-digit code, including leading zeroes. It expires after five minutes, is used once, and stays in memory. Regeneration invalidates outstanding challenges without resetting the host-wide attempt budget: five starts per minute, ten per invitation, at most three simultaneous challenges, each lasting at most thirty seconds. Restart clears invitations and challenges.
 
-Known trust skips UNPAIRED/PAIRING. Discovery failures produce OFFLINE; explicit identity changes produce ERROR and require deliberate linking. Normal session closure returns READY. Unexpected termination produces RECONNECTING, with at most three retries (1/3/8 seconds). User disconnect and app shutdown cancel retries. Invalid transitions throw rather than silently setting booleans.
+Enrollment uses SRP-6a with the HomeKit 3072-bit/SHA-512 parameters from unmodified `fast-srp-hap` 2.0.4. The vendored npm archive was checked against SHA-512 integrity; its MIT license and provenance are retained. This uses a published implementation, not custom SRP arithmetic, and does not claim an independent audit of Orbit's protocol integration.
 
-An engine process starting is **CONNECTING**, not STREAMING. STREAMING requires a fresh host-side control-channel connection observation during the current Orbit lease. This establishes protocol connection; it is not proof that picture, sound, or physical input has been manually validated.
+The code is never sent over the network. The peers exchange public SRP values and verify key-confirmation proofs. The host seals the identity, client ID, TLS fingerprint and new random 256-bit credential using AES-256-GCM with an HKDF-derived key and challenge-bound associated data. The client verifies the server proof, decrypts the envelope, and verifies the actual TLS certificate before transmitting its credential or persisting trust. An unauthenticated TLS transport is permitted only for nonsecret discovery and SRP enrollment messages, not ordinary authenticated operations.
 
-## Personal device registry
+Future operations use the separate credential over pinned HTTPS. Device registries use Windows DPAPI. The eight-digit code is never a permanent password. Existing registry credentials remain valid across this update.
 
-Each device generates its identity once. The Legion Go retains one preferred Zeiron host record with its certificate fingerprint, opaque device token, hostname and last address. Zeiron retains one trusted Legion Go identity. Registries are protected with Electron safeStorage / Windows DPAPI and ignored by Git. A changed LAN address is updated only after authenticated communication with the stored host identity.
+Local host UI can remove Orbit trust only when there is no active session. This immediately invalidates Orbit API access and cancels enrollment. Streaming-engine pairing is a separate relationship and is preserved; this control-plane operation is not a claim of backend certificate revocation.
 
-Discovery is resolution of the explicit personal-device registry, not network-wide scanning or a generic host picker.
+## Host session lifecycle
 
-## First-time linking
+`IDLE → PREPARING → CONFIGURING_DISPLAY → PREPARING_STREAM → READY → STREAMING`
 
-1. Start Orbit Host and select **Link Legion Go**.
-2. Orbit produces a five-minute, single-use invitation containing Zeiron's identity, certificate fingerprint and a random 256-bit invitation secret.
-3. Paste it in **Link Zeiron** on the Legion Go.
-4. Orbit verifies the actual TLS peer certificate before transmitting the invitation or device token. The host consumes the invitation and issues a separate device token.
-5. If the streaming engine is already paired with this host, Orbit preserves it. Otherwise the adapter invokes stock Moonlight's pair command with an internally generated PIN, and the authenticated host service approves only the request from that client's network address.
-6. Orbit verifies streaming trust through the engine before moving to READY. Streaming certificates remain in the original backend stores; no keys are copied between machines.
+Connection loss enters RECONNECTING. A validated resume keeps the session identity. Ending enters ENDING then RESTORING then IDLE. A restoration failure enters ERROR and blocks new sessions until restoration succeeds. All lifecycle operations are serialized in one manager.
 
-No password is sent to an unverified TLS peer. Invitations and device tokens are never logged. Native APIs reject browser-origin requests, arbitrary session targets, replayed invitations and expired leases.
+A session records its client identity, intent, profile, start time, heartbeat, and previous system state. The restoration journal is written atomically under ignored `data/host/` before any display preparation. Startup replays unfinished restoration. Graceful shutdown awaits restoration before stopping the owned backend. A periodic host tick expires sessions without relying on client/UI polling; expired heartbeats cannot revive them.
 
-The stock Moonlight CLI pair operation owns a Qt pairing window; Orbit starts and completes it without manual backend operation and closes its owned pairing process after trust is verified. This adapter seam needs physical-device verification; backend branding during that temporary engine operation has not been eliminated by a fork or UI automation.
+Current display policy explicitly preserves the physical monitor. The PreserveDisplay adapter makes no Windows changes. Journal ordering, restoration failures and crash recovery are verified with injected display adapters; they do not establish working Windows display switching. The lifecycle is ready for a separately tested Windows DisplayManager. It does not yet launch or monitor game processes.
 
-## Orbit sessions
+STREAMING is based on fresh host-side protocol connection events, never merely process startup. Sunshine's current log events do not attribute the connection to an Orbit device. This remains a single-client installation assumption, not authenticated attribution or proof of picture/audio/controller health. Ending a lease does not forcibly quit the host application or revoke the engine's pairing.
 
-A session is a user intent (`desktop` or `steam`), selected profile, Orbit lease, and observed lifecycle. Host-local mapping selects Desktop or Steam Big Picture internally. Clients see only Orbit intents.
+## Host API and observations
 
-The host authorizes one session lease for its one trusted client. Heartbeats renew it; leases expire after 45 seconds without control-plane activity. Recovery presents the previous lease ID rather than creating competing sessions. Normal end releases the lease but leaves the host application running. No arbitrary command API is exposed.
+Nonsecret `/identity`; SRP `/enrollment/begin` and `/enrollment/finish`; authenticated `/status`, `/pair-stream`, `/sessions/start`, `/sessions/heartbeat`, `/sessions/end`, `/sessions/state`. Fixed intents are Desktop and optional Steam Big Picture. No executable, script or shell-command endpoint exists.
 
-## Network boundary
+Host status separates command-center availability from streaming readiness. Once the local certificate exists, the control service can start before Sunshine and remains reachable when streaming is stopped or fails. First installation still obtains the initial certificate from the owned engine. Explicit backend health is based on management API success, not just process existence.
 
-Streaming uses existing Moonlight/Sunshine ports. Orbit adds an authenticated, certificate-pinned HTTPS control channel on **TCP 38742**. Sunshine management remains restricted to the PC and is not exposed through Orbit. UPnP stays disabled.
+SystemObserver reports host name, uptime, sampled CPU utilization, RAM and IPv4 interfaces. GPU metrics, temperatures, active user, foreground application and running game are explicitly unavailable/null until reliable adapters exist. Renderers never infer them.
 
-For this installation, allow TCP 38742 for Orbit.exe only from the Legion Go's current LAN IP. This is a separate, explicit firewall approval; existing streaming rules do not cover it.
+## Next capabilities
 
-## Validation and limits
+| Capability | Next implementation boundary |
+|---|---|
+| GameLibrary | Extract read-only Steam discovery from legacy `host/server.cjs`; normalize host-owned IDs, then add launcher providers |
+| GameLaunchManager | Fixed library launch targets, process confirmation and failure reporting; no remote paths or commands |
+| DisplayManager | Enumerate supported modes, identify monitor, snapshot/apply/restore with durable recovery; reject unsupported modes |
+| Virtual display | Investigate an existing maintained Windows-compatible solution before choosing any driver; no custom driver |
+| Per-game profiles | Host-owned intent/display/stream mappings; do not edit game graphics settings |
+| PowerManager | Explicit lock/sleep/restart/shutdown with intentional UI actions; separate Wake-on-LAN model |
+| AudioManager | Observe first; reversible output/mute policy with restoration later |
+| Controller awareness | Report backend/input health without replacing transport |
 
-`node --test tests/*.test.cjs` covers transition legality, identity mismatch, trust persistence, duplicate Connect, connection observation, recovery cancellation/limits, certificate pinning before secret transmission, invitation consumption, fixed sessions and host safety. TLS tests use ephemeral OpenSSL-generated certificates; they skip if OpenSSL is unavailable.
+Legion Native, Performance and Battery display intents belong to the host policy layer once a real display adapter is available. Current Balanced/Smooth/Sharp profiles remain stream requests only; they do not claim the Windows capture display has changed.
 
-Native UI tests use an isolated copy and mock host replies; they do not claim a physical stream. An actual Legion Go acceptance run must cover linking, repeated Connect, loss/recovery, intentional disconnect, picture/audio/controller behavior and returning to Orbit.
+## Security, testing and deployment
 
-No backend was forked. No driver, startup service, router setting or broad firewall rule is installed.
+TCP 38742 is the certificate-pinned authenticated control channel. Existing program-specific LAN firewall access is sufficient; no new rule is introduced by this update. Sunshine management stays local-only, UPnP disabled. Setup installs no driver, startup service or router changes.
+
+`node --test tests/*.test.cjs` verifies enrollment proofs, replay/expiration/limits, TLS pinning before credential transmission, device trust removal, host serialization, profile validation, restoration ordering/replay/failure, expiry, fresh streaming observation and client recovery. TLS tests need OpenSSL and skip without it. Mock native UI checks and isolated real engine pairing are separate from physical Legion Go stream acceptance.
+
+The legacy simulator and loopback preview remain separate. They are not validation of this host controller. Device data, certificates, credentials, journals and logs stay out of Git.

@@ -142,13 +142,14 @@ class HostBackend {
   async status() {
     const basic={installed:fs.existsSync(this.exe),running:this.ready,starting:Boolean(this.starting)&&!this.ready,
       name:os.hostname(),addresses:this.addresses,port:this.basePort,message:this.message,
-      apps:[],pairings:[]};
+      apps:[],pairings:[],healthy:false};
     if(!this.ready) {
       try { basic.apps=JSON.parse(fs.readFileSync(this.paths().apps,'utf8')).apps.map(a=>({name:String(a.name)})); } catch {}
       return basic;
     }
     try {
       const [apps,pins]=await Promise.all([this.api('/api/apps'),this.api('/api/pin')]);
+      basic.healthy=true;
       basic.apps=(apps.apps||[]).map(a=>({name:String(a.name)}));
       basic.pairings=(pins.pairings||[]).map(a=>({id:a.id,name:a.name,address:a.address}));
     } catch(error) {basic.message=error.message;}

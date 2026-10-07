@@ -1,13 +1,13 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let busy=false,steamDirty=false,timer,linkedBefore=false;
+let busy=false,steamDirty=false,timer,linkedBefore=false,deviceId=null;
 function notify(s){$('message').textContent=s;}
 async function refresh(){
  try{
   const s=await window.orbitHost.status();
   $('pc').textContent='Zeiron';
   $('address').textContent=s.running?'Your Legion Go can find this PC on your home network.':'Start hosting to bring Zeiron online.';
-  $('badge').textContent=s.running&&s.controlOnline?'Online':s.starting?'Starting':s.installed?'Ready to host':'Setup required';
+  $('badge').textContent=s.running&&s.controlOnline?'Online':s.controlOnline?'Online · stream stopped':s.starting?'Starting':s.installed?'Ready to host':'Setup required';
   $('start').disabled=busy||s.running||s.starting||!s.installed;
   $('stop').disabled=busy||!s.running;
   $('steam').disabled=busy||s.running;$('save').disabled=busy||s.running;
@@ -17,6 +17,9 @@ async function refresh(){
   $('linked').textContent=s.linked?'Legion Go is linked. Connect from Orbit on your handheld.':'Link your Legion Go once. Future sessions start directly from Orbit.';
   if(s.linked&&!linkedBefore&&!$('invitation').hidden){$('link-code').value='';$('invitation').hidden=true;}
   linkedBefore=s.linked;
+  const device=s.devices?.[0];deviceId=device?.id||null;
+  $('revoke').hidden=!deviceId;$('revoke').disabled=busy||Boolean(s.hostSession?.session);
+  $('device-details').textContent=device?.lastSeenAt?'Last seen: '+new Date(device.lastSeenAt).toLocaleString():'';
   if(s.message)notify(s.message);
  }catch{notify('Orbit could not read host status.');}
 }
@@ -33,6 +36,10 @@ $('invite').onclick=()=>run(async()=>{
  const value=await window.orbitHost.link();
  $('link-code').value=value.code;$('invitation').hidden=false;
  clearTimeout(timer);timer=setTimeout(()=>{$('link-code').value='';$('invitation').hidden=true;},Math.max(0,value.expires-Date.now()));
-},'Paste the Orbit code on your Legion Go.');
+},'Enter the eight-digit code on your Legion Go.');
+$('revoke').onclick=()=>{
+ if(deviceId&&window.confirm('Remove the Legion Go’s Orbit trust? It will need to link again. Streaming-engine pairing is preserved.'))
+  run(()=>window.orbitHost.revoke(deviceId),'Legion Go trust removed.');
+};
 $('diagnostics').onclick=()=>window.orbitHost.diagnostics();
 refresh();setInterval(refresh,3000);

@@ -46,10 +46,4 @@ function request({address,fp,token,endpoint,method='GET',body,port=CONTROL_PORT,
   req.on('error',e=>{agent.destroy();reject(e);});req.end(bytes);
  });
 }
-function decodeInvitation(code){
- if(typeof code!=='string'||code.length>2048||!code.startsWith('orbit1.'))throw Error('Paste the linking code shown in Orbit on Zeiron');
- let value;try{value=JSON.parse(Buffer.from(code.slice(7),'base64url').toString());}catch{throw Error('Invalid Orbit linking code');}
- if(!/^[a-f0-9]{64}$/.test(value.fp||'') || !/^[a-f0-9-]{36}$/.test(value.id||'') || !/^[A-Za-z0-9_-]{43}$/.test(value.token||''))throw Error('Invalid Orbit linking code');
- return value;
-}
-module.exports={CONTROL_PORT,fingerprint,isPrivate,resolve,PinnedAgent,request,decodeInvitation};
+module.exports={CONTROL_PORT,fingerprint,isPrivate,resolve,PinnedAgent,request};

@@ -37,7 +37,7 @@ else {
    if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('Unsupported caller');
    return fn(...args);
   });
-  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.4.0'}));
+  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.5.0'}));
   handle('orbit:status',()=>coordinator.refresh());
   handle('orbit:link',code=>coordinator.link(code));
   handle('orbit:stream',id=>coordinator.connect(id));
