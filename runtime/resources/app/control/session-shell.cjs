@@ -15,13 +15,13 @@ class SessionShell{
   this.window.loadFile(path.join(this.root,'session-ui/index.html'));
  }
  state(snapshot){
-  this.active=snapshot.state==='STREAMING';this.title=snapshot.session?.game?.name||(snapshot.session?.intent==='steam'?'Steam Big Picture':'Your PC');
+  this.game=Boolean(snapshot.session?.gameId||snapshot.session?.game);this.active=snapshot.state==='STREAMING';this.title=snapshot.session?.game?.name||(snapshot.session?.intent==='steam'?'Steam Big Picture':'Your PC');
   if(this.active){this.ensure();this.position();this.window.showInactive();this.globalShortcut.register('CommandOrControl+Alt+O',()=>this.toggle());}
   else{this.window?.hide();this.expanded=false;this.busy=false;this.globalShortcut.unregister('CommandOrControl+Alt+O');}
   this.render();
  }
  position(){if(!this.window)return;const {x,y,width}=this.screen.getPrimaryDisplay().bounds;const w=this.expanded?332:176,h=this.expanded?246:54;this.window.setBounds({x:x+width-w-18,y:y+16,width:w,height:h});}
- render(){this.window?.webContents.send('orbit:session-state',{title:this.title,expanded:this.expanded,busy:this.busy});}
+ render(){this.window?.webContents.send('orbit:session-state',{title:this.title,game:this.game,expanded:this.expanded,busy:this.busy});}
  toggle(){if(!this.active||this.busy)return;this.expanded=!this.expanded;this.window.setFocusable(this.expanded);this.position();this.render();if(this.expanded){this.window.show();this.window.focus();}else this.window.showInactive();return {expanded:this.expanded};}
  resume(){if(!this.expanded)return;this.expanded=false;this.window.setFocusable(false);this.window.blur();this.position();this.render();this.window.showInactive();}
  async end(){if(this.busy||!this.active)return;this.busy=true;this.render();try{return await this.onEnd();}finally{this.busy=false;this.render();}}

@@ -56,3 +56,13 @@ D-pad/stick moves focus; A plays the focused game or activates a control; B back
 The library comes from Zeiron, including registered Xbox PC titles, Steam, and supported standalone PC games. Xbox games without a valid Windows registration are marked for host setup. Emulators, ambiguous executables, and installers are not automatically treated as game launch targets. Other launcher providers are not currently imported.
 
 During play, tap the top-right **Orbit · Menu** badge. **Resume** returns to the game; **End stream** closes Orbit’s streaming process and returns to the library while leaving the game open on Zeiron. With the menu focused, controller **B** resumes and **A** ends the stream; the streaming window receives gamepad input while it has focus. Keyboard shortcut: **Ctrl+Alt+O**. The badge does not take focus during normal play.
+
+### Orbit 0.9 game sessions
+
+Update both Zeiron and the handheld to `orbit-discover-and-link`. A game session's Orbit menu now offers **Close game**, which requests a normal exit on Zeiron before ending the stream. If the game asks to save or confirm exit, resolve that dialog in the stream and retry. Desktop sessions offer **End Desktop** and do not close host applications.
+
+Orbit tracks newly started game windows under the host's configured game installation. Once the observed game processes exit, the handheld returns to its library instead of reconnecting to an empty desktop. Detection happens on session polling; a brief desktop transition is still possible. Games with launchers that move outside their installation directory may require further provider-specific tracking. Preexisting host games are deliberately not closed.
+
+Xbox activation can open cloud-save, sign-in, or launcher dialogs before gameplay. Orbit keeps the stream available to make those choices on the handheld. It does not select or overwrite a save automatically.
+
+For Zeiron's Yuzu EA Xbox 360 controller bindings, close Yuzu and run `node scripts/repair-yuzu-input.cjs` locally. This backs up its configuration and repairs raw SDL buttons and D-pad hats. Keyboard bindings are a separate Yuzu input profile; this repair configures the streamed controller.

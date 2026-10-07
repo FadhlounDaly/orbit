@@ -27,7 +27,7 @@ class HostService{
   this.timer=setInterval(async()=>{
    if(this.expiring)return;this.expiring=true;
    try{this.devices.prune();await this.sessions.status();}catch{}finally{this.expiring=false;}
-  },5000);this.timer.unref();
+  },1500);this.timer.unref();
  }
  async stop(){
   clearInterval(this.timer);this.timer=null;this.devices.cancel();
@@ -97,7 +97,7 @@ class HostService{
     const b=await this.body(req);return send(200,{session:await this.sessions.heartbeat(b.id,client.id),hostSession:this.sessions.snapshot()});
    }
    if(endpoint==='/sessions/end'&&req.method==='POST'){
-    const b=await this.body(req);return send(200,await this.sessions.end(b.id,client.id));
+    const b=await this.body(req);return send(200,await this.sessions.end(b.id,client.id,b.closeGame===true));
    }
    if(endpoint==='/sessions/state'&&req.method==='GET')return send(200,await this.sessions.status());
    send(404,{error:'Unknown Orbit operation'});

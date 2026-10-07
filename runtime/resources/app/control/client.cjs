@@ -202,6 +202,7 @@ class ClientCoordinator{
     const reply=await this.remote('/sessions/heartbeat','POST',{id:this.session.id});
     if(generation!==this.generation||!this.session)return;
     this.failures=0;
+    if(!reply.session&&this.session.gameId){await this.disconnect(false);return;}
     if(reply.session?.state==='STREAMING'&&this.machine.state==='CONNECTING')this.machine.move('STREAMING');
     if(reply.session?.state==='DISCONNECTED'){
      this.adapter.stop();return;
@@ -247,7 +248,9 @@ class ClientCoordinator{
    }
   },delay);
  }
- async disconnect(){
+ async disconnect(closeGame=true){
+  const owned=this.session;
+  if(closeGame&&owned?.gameId&&owned.id)await this.remote('/sessions/end','POST',{id:owned.id,closeGame:true});
   this.userStopped=true;this.cancel(this.retryTimer);this.cancel(this.pollTimer);
   const current=this.session;
   this.session=null;++this.generation;

@@ -104,8 +104,9 @@ class SessionManager {
     profile:this.current.profile,game:this.current.game||null,stream:STREAM_PROFILES[this.current.profile],hostSession:this.snapshot()};}
   async heartbeat(id,clientDeviceId){return this.serial(async()=>{
     if(this.expired()){await this.endInternal('heartbeat-expired');throw conflict('Session expired');}
+    if(!this.current&&this.completed?.id===id&&this.completed.clientDeviceId===clientDeviceId)return null;
     if(!this.current||this.current.id!==id||this.current.clientDeviceId!==clientDeviceId)throw conflict('Session expired');
-    this.current.heartbeat=this.clock();this.observe();this.save();return this.compatible();
+    this.current.heartbeat=this.clock();await this.checkGame();this.observe();this.save();return this.compatible();
   });}
   observe(){
     if(!this.current)return;
@@ -114,12 +115,14 @@ class SessionManager {
   }
   compatible(){return this.current?{id:this.current.id,intent:this.current.intent,
     state:this.state==='READY'?'CONNECTING':this.state==='RECONNECTING'?'DISCONNECTED':this.state}:null;}
+  async checkGame(){if(this.current?.gameId&&await this.launcher?.finished?.(this.current.gameId)){this.completed={id:this.current.id,clientDeviceId:this.current.clientDeviceId};await this.endInternal(null);}}
   async status(){return this.serial(async()=>{
     if(this.expired())await this.endInternal('heartbeat-expired');
-    this.observe();return {session:this.compatible(),hostSession:this.snapshot()};
+    await this.checkGame();this.observe();return {session:this.compatible(),hostSession:this.snapshot()};
   });}
-  async end(id,clientDeviceId){return this.serial(async()=>{
+  async end(id,clientDeviceId,closeGame=false){return this.serial(async()=>{
     if(this.current&&(id!==this.current.id||clientDeviceId!==this.current.clientDeviceId))throw conflict('Session identity mismatch');
+    if(closeGame&&this.current?.gameId){try{await this.launcher.closeGame(this.current.gameId);}catch(e){throw conflict(e.message);}}
     await this.endInternal(null);return {ended:true,hostSession:this.snapshot()};
   });}
   async endInternal(reason){
