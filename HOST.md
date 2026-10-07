@@ -9,8 +9,8 @@ Orbit now has a native host interface on the gaming PC and a handheld interface 
 3. Stop any existing Cortex/Sunshine hosting session before opening Orbit Host. Orbit refuses occupied ports and never stops another host automatically.
 4. Desktop is shared by default. Before starting, optionally select Steam Big Picture and save shared apps.
 5. On the Legion Go, open Orbit. It resolves Zeiron from its saved address or ZEIRON-CORE.
-6. Select Link Legion Go in Orbit Host, then enter its eight-digit code into Link Zeiron on the handheld. Orbit coordinates pairing and verifies trust.
-7. When Orbit shows Zeiron Online, select Desktop and Connect.
+6. Select Link Zeiron on the handheld and enter its four-digit code in the pending request in Orbit Host. Orbit coordinates pairing and verifies trust.
+7. When Orbit shows Zeiron Online, choose a game and Play on Legion Go, or use Your PC → Desktop.
 
 Select Stop hosting to stop streaming while the Orbit control channel remains available. Closing Orbit Host restores its session state before stopping the owned backend. No startup service is registered.
 
@@ -37,3 +37,11 @@ Pair this new host freshly; Cortex’s existing pairings are not reused. Keep Co
 Run `node --test tests/host-backend.test.cjs` for port-conflict refusal, protected credential requirements, pending-PIN validation, pairing-result handling, and shared-app safety. Hardware streaming, audio, controllers, and the physical Legion Go require an actual paired stream; automated tests do not establish that result.
 
 The older `host/` folder is a loopback browser preview and is not used by the native Orbit Host.
+
+## Installed game library
+
+The host owns discovery and launch targets for Steam, registered Xbox PC games, and unambiguous standalone PC executables. No per-game Sunshine entry is required: games run on Zeiron and use the existing Desktop stream. Xbox launch uses the registered Windows application target rather than bypassing its normal launch flow. Disconnecting the stream leaves the game running. Store launch acceptance and a standalone process starting do not guarantee a game's menu is ready; check the streamed picture.
+
+Artwork from installed files and the public Microsoft catalog is cached locally; network failures preserve installed art. Library and game details require the already-linked client credential over pinned HTTPS. Update both Orbit Host and the handheld client for library browsing and Play. Device trust and streaming pairings survive source updates.
+
+Emulated games use host-owned profiles in `data/host/library-profiles.json`. A Ryujinx profile names a local root, relative executable, ROM, data directory, and optional artwork. Orbit validates those paths under the root and sends only the opaque game ID from the handheld. The existing save directory is retained. Windows forced administrator compatibility can block direct launches; Orbit reports that failure rather than elevating the host.

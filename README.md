@@ -8,16 +8,16 @@ Your personal connection between **Zeiron** and **Legion Go**. Orbit owns device
 2. Open **Start Orbit Host.cmd**; hosting starts automatically.
 3. Stop any other host occupying the streaming ports first; Orbit does not stop it automatically.
 4. Approve the reviewed local-network firewall access for the Legion Go, including Orbit's TCP 38742 control channel. Setup does not add rules.
-5. Select **Link Legion Go** to generate the eight-digit pairing code.
+5. Approve the pending Legion Go request using the four-digit code shown on the handheld.
 
 ## Legion Go
 
 1. Review and run `Setup Orbit.ps1`, then open **Start Orbit.cmd**.
 2. Orbit resolves Zeiron using its saved device information or ZEIRON-CORE on the LAN.
-3. Select **Link Zeiron** and enter the eight-digit code from Orbit on the PC. Orbit coordinates streaming trust; there is no manual backend setup.
-4. Once Zeiron shows **Online**, choose **Desktop** and press **Connect**.
+3. Select **Link Zeiron**. Enter the handheld’s four-digit code in the pending request in Orbit Host on Zeiron. Orbit coordinates streaming trust.
+4. Once Zeiron shows **Online**, browse its installed games, select a cover and press **Play on Legion Go**. Zeiron launches the game and Orbit starts the stream. **Your PC** also offers Desktop and optional Steam Big Picture.
 
-After linking, trust persists locally. The same Connect action starts future sessions directly. Orbit observes connection state and retries unexpected disconnects up to three times. Ending a session returns to Orbit without quitting the host app.
+After linking, trust persists locally. Play starts future sessions directly; your device link is preserved. Orbit observes connection state and retries unexpected disconnects up to three times. Ending a session returns to Orbit without quitting the host app.
 
 Keep both devices on the home network. The optional Steam Big Picture session is enabled from Orbit Host while hosting is stopped.
 

@@ -37,10 +37,16 @@ else {
    if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('Unsupported caller');
    return fn(...args);
   });
-  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.5.0'}));
+  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.7.0'}));
   handle('orbit:status',()=>coordinator.refresh());
-  handle('orbit:link',code=>coordinator.link(code));
+  handle('orbit:discover',()=>coordinator.discover());
+  handle('orbit:select-host',id=>coordinator.selectHost(id));
+  handle('orbit:link',()=>coordinator.link());
+  handle('orbit:cancel-link',()=>coordinator.cancelLink());
   handle('orbit:stream',id=>coordinator.connect(id));
+  handle('orbit:library',input=>{if(input!==undefined&&(!input||typeof input.force!=='boolean'||Object.keys(input).length!==1))throw Error('Invalid library request');return coordinator.library(input);});
+  handle('orbit:play',id=>coordinator.play(id));
+  handle('orbit:game-details',id=>coordinator.gameDetails(id));
   handle('orbit:disconnect',()=>coordinator.disconnect());
   handle('orbit:config',input=>{
    if(!input||Object.keys(input).length!==1||!PROFILES[input.profile])throw Error('Invalid Orbit preference');

@@ -1,76 +1,177 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let intent='desktop',current=null,busy=false,notice='';
-const labels={UNKNOWN:'Finding Zeiron',DISCOVERING:'Finding Zeiron',HOST_FOUND:'Zeiron found',UNPAIRED:'Link required',
- PAIRING:'Linking',TRUSTED:'Trusted',READY:'Online',CONNECTING:'Connecting',STREAMING:'Connected',
- RECONNECTING:'Reconnecting',OFFLINE:'Offline',ERROR:'Needs attention'};
+const ACTIVE=new Set(['CONNECTING','STREAMING','RECONNECTING']);
+const labels={UNKNOWN:'Finding PC',DISCOVERING:'Finding PC',HOST_FOUND:'PC found',UNPAIRED:'Link required',PAIRING:'Linking',TRUSTED:'Linked',READY:'Online',CONNECTING:'Starting',STREAMING:'Playing',RECONNECTING:'Reconnecting',OFFLINE:'Offline',ERROR:'Needs attention'};
+const profileLabels={balanced:'Balanced · 60 fps',smooth:'Smooth · 120 fps',sharp:'Sharp · 60 fps'};
+let current=null,busy=false,refreshing=false,loadingLibrary=false,library=[],libraryError='',loaded=false,filter='games',selectedId=null,view='library',cardsSignature='',hostSignature='',lastToast='',toastTimer,oldButtons=[],lastMove=0,lastController='';
+let selectedProfile='balanced';
+const heroCache=new Map(),heroPending=new Set();
+async function loadHero(game){
+ if(heroCache.has(game.id)||heroPending.has(game.id)||!current?.trusted)return;
+ heroPending.add(game.id);
+ try{const value=await window.orbit.gameDetails(game.id);const art=typeof value.hero==='string'&&value.hero.length<=180000&&/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(value.hero)?value.hero:null;heroCache.set(game.id,art);if(selectedId===game.id)renderFeature();}
+ catch{heroCache.set(game.id,null);}
+ finally{heroPending.delete(game.id);}
+}
+const setText=(id,value)=>{const text=String(value??'');if($(id).textContent!==text)$(id).textContent=text;};
+const active=()=>ACTIVE.has(current?.state);
+const selected=()=>library.find(g=>g.id===selectedId);
+function toast(text){
+ if(!text){$('message').hidden=true;lastToast='';return;}
+ if(text===lastToast&&!$('message').hidden)return;
+ lastToast=text;setText('message',text);$('message').hidden=false;clearTimeout(toastTimer);
+ toastTimer=setTimeout(()=>{$('message').hidden=true;lastToast='';},9000);
+}
+function filtered(){
+ const query=$('search').value.trim().toLocaleLowerCase();
+ return library.filter(g=>(filter==='apps'?g.kind==='app':g.kind!=='app')&&(filter==='xbox'?g.provider==='Xbox':filter==='steam'?g.provider==='Steam':true)&&(!query||g.name.toLocaleLowerCase().includes(query)));
+}
+function renderFeature(){
+ const game=selected();
+ setText('game-title',game?.name||'Pick your next adventure.');
+ setText('hero-eyebrow',game?(game.provider.toUpperCase()+' · INSTALLED ON ZEIRON'):'FROM YOUR PC. TO YOUR HANDS.');
+ setText('game-meta',game?.detail||(game?'Ready to play from Zeiron.':'Your games on Zeiron, ready for your Legion Go.'));
+ const art=(game?heroCache.get(game.id):null)||game?.artwork||'';
+ if(game)loadHero(game);
+ if($('hero-art').dataset.art!==art){$('hero-art').dataset.art=art;if(art)$('hero-art').src=art;else $('hero-art').removeAttribute('src');$('hero-art').hidden=!art;}
+ setText('play-label',active()?(current.state==='STREAMING'?'Playing on Legion Go':current.state==='RECONNECTING'?'Reconnecting…':'Starting your session…'):busy?'Starting…':game?.launchable===false?'Needs setup on Zeiron':'Play on Legion Go');
+ $('play').disabled=busy||active()||current?.state!=='READY'||!game?.launchable;
+ $('desktop').hidden=active();$('desktop').disabled=busy||current?.state!=='READY';
+ $('disconnect').hidden=!active();$('disconnect').disabled=busy;
+ for(const card of $('games').children){const yes=card.dataset.id===selectedId;card.classList.toggle('selected',yes);card.setAttribute('aria-pressed',String(yes));}
+}
+function renderCards(){
+ const games=filtered(),signature=JSON.stringify(games);
+ setText('game-count',games.length);
+ if(!games.some(g=>g.id===selectedId))selectedId=games[0]?.id||null;
+ if(signature!==cardsSignature){
+  cardsSignature=signature;
+  const focused=document.activeElement?.closest('.game-card')?.dataset.id,scroll=$('library-scroll').scrollLeft;
+  const fragment=document.createDocumentFragment();
+  for(const game of games){
+   const card=document.createElement('button');card.className='game-card';card.dataset.id=game.id;card.setAttribute('aria-label',game.name+' · '+game.provider);card.setAttribute('aria-pressed','false');
+   const cover=document.createElement('div');cover.className='cover';
+   if(game.artwork){const img=document.createElement('img');img.src=game.artwork;img.alt='';img.draggable=false;img.loading='lazy';cover.append(img);}
+   else{const mark=document.createElement('span');mark.className='cover-fallback';mark.textContent=game.name.split(/\s+/).filter(s=>/[a-z0-9]/i.test(s)).slice(0,2).map(s=>s[0]).join('').toUpperCase();cover.append(mark);const hue=[...game.id].reduce((n,c)=>n+c.charCodeAt(0),0)%360;cover.style.background='linear-gradient(145deg,hsl('+hue+' 22% 29%),hsl('+hue+' 18% 10%))';}
+   const provider=document.createElement('span');provider.className='provider-mark';provider.textContent=game.provider.toUpperCase();cover.append(provider);
+   const bottom=document.createElement('div');bottom.className='cover-bottom';
+   const installed=document.createElement('span'),dot=document.createElement('i');dot.className='installed-dot';installed.append(dot,document.createTextNode(game.launchable?'Ready to play':'Needs host setup'));bottom.append(installed);cover.append(bottom);
+   const name=document.createElement('strong');name.textContent=game.name;
+   const detail=document.createElement('span');detail.className='card-detail';detail.textContent=game.kind==='app'?'PC app · Zeiron':'PC game · Zeiron';
+   card.append(cover,name,detail);
+   const choose=()=>{selectedId=game.id;renderFeature();};
+   card.onclick=choose;card.onfocus=choose;card.ondblclick=()=>playSelected();
+   fragment.append(card);
+  }
+  $('games').replaceChildren(fragment);
+  if(focused){const card=[...$('games').children].find(c=>c.dataset.id===focused);card?.focus({preventScroll:true});}
+  $('library-scroll').scrollLeft=scroll;
+ }
+ $('games').hidden=!games.length;$('empty').hidden=Boolean(games.length);
+ if(!games.length){
+  setText('empty-title',loadingLibrary?'Bringing your games over…':libraryError?'Your library is unavailable':loaded?'No games here yet.':'Your library is on its way.');
+  setText('empty-description',libraryError||(loaded?$('search').value?'Try another title or clear your search.':filter==='apps'?'No PC apps found in this library.':'Install a game on Zeiron, then refresh your library.':'Link Zeiron to bring your installed PC games here.'));
+ }
+ $('link').hidden=Boolean(current?.trusted)||current?.state==='PAIRING';
+ $('link').disabled=busy||active();$('retry').hidden=!libraryError;$('retry').disabled=loadingLibrary;
+ renderFeature();
+}
 function render(s){
- current=s;$('status').textContent=labels[s.state]||'Checking';
- const active=['CONNECTING','STREAMING','RECONNECTING'].includes(s.state);
- $('connect').disabled=busy||s.state!=='READY';$('connect').textContent=active?labels[s.state]:'Connect';
- $('disconnect').hidden=!active;$('disconnect').disabled=busy;
- $('link').hidden=!['UNPAIRED','ERROR'].includes(s.state);$('link').disabled=busy||active;
- $('retry').hidden=active||s.state==='PAIRING';
- $('profile').disabled=active||busy;
- $('desktop').disabled=active||busy;$('steam').disabled=active||busy||!s.sessions.some(x=>x.id==='steam');
- if(intent==='steam'&&!s.sessions.some(x=>x.id==='steam'))intent='desktop';
- $('desktop').classList.toggle('selected',intent==='desktop');$('steam').classList.toggle('selected',intent==='steam');
- $('message').textContent=notice||s.reason||'';
- $('description').textContent=s.state==='READY'?'Online. Your '+(intent==='desktop'?'desktop':'Steam session')+' is ready.':
-  s.state==='STREAMING'?'Your session is connected. Close it to return to Orbit.':
-  s.state==='RECONNECTING'?'Orbit is restoring your connection.':
-  s.state==='OFFLINE'?'Zeiron is offline. Orbit will check again.':
-  s.state==='UNPAIRED'?'Link your Legion Go to Zeiron once, then connect whenever it is online.':
-  s.state==='PAIRING'?'Orbit is establishing your trusted connection.':'Looking after your connection to Zeiron.';
+ const old=current;current=s;
+ setText('status',labels[s.state]||'Checking');$('status-dot').className='status-dot '+(s.state==='READY'||s.state==='STREAMING'?'online':s.hostOnline?'attention':'');
+ setText('connection-detail',s.trusted?(s.state==='READY'?'Linked to Zeiron. Ready to play.':s.reason||'Your device is linked to Zeiron.'):s.reason||'Link Zeiron once to play your PC games.');
+ setText('pc-description',s.state==='READY'?'Linked, online, and ready when you are.':s.reason||'Your connected PC, within reach.');
+ $('pc-desktop').disabled=busy||active()||s.state!=='READY';$('steam').disabled=busy||active()||s.state!=='READY'||!s.sessions?.some(x=>x.id==='steam');
+ $('profile').disabled=busy||active();$('settings-link').disabled=busy||active();
+ $('settings-discover').disabled=busy||active()||s.state==='PAIRING';$('discover').disabled=$('settings-discover').disabled;
+ $('refresh-library').disabled=loadingLibrary||busy||s.state==='PAIRING';
+ if(s.state==='PAIRING'&&s.pairing){setText('pair-code',s.pairing.code);setText('pair-wait','Waiting for approval in Orbit Host on Zeiron.');if(!$('link-dialog').open){$('settings-dialog').close();$('link-dialog').showModal();}}
+ else if(s.state!=='PAIRING'){setText('pair-code','');if($('link-dialog').open)$('link-dialog').close();}
+ const hosts=s.hosts||[],signature=JSON.stringify(hosts);
+ if(signature!==hostSignature){hostSignature=signature;$('hosts').replaceChildren(...hosts.map(host=>{
+  const row=document.createElement('div');row.className='host-row';const name=document.createElement('p');name.textContent='Zeiron · Online';
+  const select=document.createElement('button');select.className='quiet-button';select.textContent='Select Zeiron';select.onclick=()=>action(async()=>{const next=await window.orbit.selectHost(host.id);render(next);if(next.state==='UNPAIRED')return startLink();return next;});row.append(name,select);return row;
+ }));}
+ for(const button of $('hosts').querySelectorAll('button'))button.disabled=busy||active()||s.state==='PAIRING';
+ renderFeature();renderCards();
+ if(s.reason&&s.state==='ERROR'&&(old?.state!==s.state||old?.reason!==s.reason))toast(s.reason);
+ if(s.trusted&&(s.hostOnline||s.state==='READY')&&!loaded&&!loadingLibrary&&!libraryError)loadLibrary();
 }
-async function refresh(){try{render(await window.orbit.getStatus());}catch(e){$('message').textContent=e.message;}}
+async function refresh(){
+ if(refreshing||busy||current?.state==='PAIRING')return;refreshing=true;
+ try{render(await window.orbit.getStatus());}catch(e){toast(e.message);}finally{refreshing=false;}
+}
+async function loadLibrary(force=false){
+ if(loadingLibrary)return;loadingLibrary=true;libraryError='';renderCards();$('refresh-library').disabled=true;
+ try{
+  const value=await window.orbit.library(force);
+  const valid=/^(?:steam:\d{1,12}|(?:xbox|local):[a-f0-9]{64})$/;
+  library=(value.games||[]).filter(g=>typeof g.id==='string'&&valid.test(g.id)&&typeof g.name==='string').map(g=>({...g,name:g.name.slice(0,200),kind:g.kind==='app'?'app':'game',artwork:typeof g.artwork==='string'&&g.artwork.length<=24000&&/^data:image\/(?:jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(g.artwork)?g.artwork:null}));
+  if(force)heroCache.clear();loaded=true;
+  if(!selectedId){try{const recent=JSON.parse(localStorage.getItem('orbit-recent')||'[]');selectedId=recent.find(id=>library.some(g=>g.id===id&&g.kind==='game'))||null;}catch{}}
+  renderCards();if(force)toast('Library updated from Zeiron.');
+ }catch(e){libraryError=e.message;if(library.length)toast('Could not update your library. Showing the last loaded games.');}
+ finally{loadingLibrary=false;renderCards();$('refresh-library').disabled=busy;}
+}
 async function action(fn){
- if(busy)return;busy=true;notice='';if(current)render(current);
- try{const result=await fn();if(result?.state)render(result);}
- catch(e){notice=e.message;$('message').textContent=notice;}
- finally{busy=false;if(current)render(current);}
+ if(busy)return;busy=true;toast('');if(current)render(current);
+ try{const result=await fn();if(result?.state)render(result);return result;}
+ catch(e){toast(e.message);}finally{busy=false;if(current)render(current);}
 }
-$('connect').onclick=()=>action(()=>window.orbit.stream(intent));
-$('disconnect').onclick=()=>action(()=>window.orbit.disconnect());
-$('retry').onclick=refresh;
-$('desktop').onclick=()=>{intent='desktop';if(current)render(current);};
-$('steam').onclick=()=>{intent='steam';if(current)render(current);};
-$('link').onclick=()=>{$('link-error').textContent='';$('link-dialog').showModal();$('code').focus();};
-$('link-dialog').addEventListener('cancel',e=>{if(busy)e.preventDefault();else $('code').value='';});
-$('cancel-link').onclick=()=>{$('code').value='';$('link-dialog').close();};
-$('link-form').onsubmit=async e=>{
- e.preventDefault();if(busy)return;
- const code=$('code').value.trim();$('code').value='';$('confirm-link').disabled=true;$('cancel-link').disabled=true;
- await action(async()=>{try{const result=await window.orbit.link(code);$('link-dialog').close();return result;}catch(error){$('link-error').textContent=error.message;throw error;}});
- $('confirm-link').disabled=false;$('cancel-link').disabled=false;
-};
-$('profile').onchange=()=>action(()=>window.orbit.saveConfig({profile:$('profile').value}));
-$('fullscreen').onclick=()=>window.orbit.fullscreen();
-$('quit').onclick=()=>window.orbit.quit();
-window.orbit.onState(s=>{notice='';render(s);});
-window.orbit.info().then(i=>{$('profile').value=i.config.profile;refresh();}).catch(e=>{$('message').textContent=e.message;});
-setInterval(refresh,8000);
-const controls=()=>[...document.querySelectorAll(($('link-dialog').open?'dialog ':'')+'button:not(:disabled), '+($('link-dialog').open?'dialog ':'')+'select:not(:disabled)')].filter(n=>n.getClientRects().length);
-function move(delta){
- const list=controls();if(!list.length)return;const i=list.indexOf(document.activeElement);
- list[(i+delta+list.length)%list.length].focus();
+async function playSelected(){
+ const game=selected();if(!game||$('play').disabled)return;
+ await action(async()=>{
+  const result=await window.orbit.play(game.id);
+  if(ACTIVE.has(result?.state)){try{const previous=JSON.parse(localStorage.getItem('orbit-recent')||'[]');localStorage.setItem('orbit-recent',JSON.stringify([game.id,...previous.filter(id=>id!==game.id)].slice(0,12)));}catch{}}
+  return result;
+ });
 }
-function back(){if($('link-dialog').open)$('cancel-link').click();}
+function startLink(){setText('pair-code','…');setText('pair-wait','Preparing your linking request…');$('settings-dialog').close();if(!$('link-dialog').open)$('link-dialog').showModal();return window.orbit.link();}
+function cancelLink(){setText('pair-code','');$('link-dialog').close();window.orbit.cancelLink().catch(e=>toast(e.message));}
+function switchView(next){view=next;$('library-view').hidden=next!=='library';$('pc-view').hidden=next!=='pc';for(const name of ['library','pc']){$('tab-'+name).classList.toggle('active',name===next);$('tab-'+name).setAttribute('aria-pressed',String(name===next));}}
+function setFilter(next){filter=next;for(const name of ['games','xbox','steam','apps']){$('filter-'+name).classList.toggle('active',name===next);$('filter-'+name).setAttribute('aria-pressed',String(name===next));}renderCards();}
+$('play').onclick=playSelected;$('desktop').onclick=()=>action(()=>window.orbit.stream('desktop'));$('pc-desktop').onclick=$('desktop').onclick;$('steam').onclick=()=>action(()=>window.orbit.stream('steam'));$('disconnect').onclick=()=>action(()=>window.orbit.disconnect());
+$('tab-library').onclick=()=>switchView('library');$('tab-pc').onclick=()=>switchView('pc');
+for(const name of ['games','xbox','steam','apps'])$('filter-'+name).onclick=()=>setFilter(name);
+$('search').oninput=renderCards;$('refresh-library').onclick=()=>loadLibrary(true);$('retry').onclick=()=>loadLibrary(true);
+$('link').onclick=()=>action(startLink);$('settings-link').onclick=$('link').onclick;$('cancel-link').onclick=cancelLink;
+$('link-dialog').addEventListener('cancel',e=>{e.preventDefault();cancelLink();});
+$('settings').onclick=()=>$('settings-dialog').showModal();$('host-settings').onclick=$('settings').onclick;$('close-settings').onclick=()=>$('settings-dialog').close();
+$('discover').onclick=()=>action(()=>window.orbit.discoverHosts());$('settings-discover').onclick=()=>{$('settings-dialog').close();switchView('pc');$('discover').onclick();};
+$('profile').onchange=()=>action(async()=>{const value=await window.orbit.saveConfig({profile:$('profile').value});selectedProfile=value.profile;setText('profile-summary',profileLabels[selectedProfile]);return value;});
+$('fullscreen').onclick=()=>window.orbit.fullscreen();$('quit').onclick=()=>window.orbit.quit();
+function visibleControls(){const scope=$('link-dialog').open?$('link-dialog'):$('settings-dialog').open?$('settings-dialog'):document;return [...scope.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled)')].filter(n=>n.getClientRects().length);}
+function navigate(direction){
+ const controls=visibleControls();if(!controls.length)return;
+ const focused=document.activeElement,origin=focused.getBoundingClientRect();
+ if(!controls.includes(focused)){const first=view==='library'?$('games').querySelector('button')||$('play'): $('pc-desktop');(first.disabled?controls[0]:first).focus();return;}
+ const ox=origin.left+origin.width/2,oy=origin.top+origin.height/2,dx=direction==='left'?-1:direction==='right'?1:0,dy=direction==='up'?-1:direction==='down'?1:0;
+ const candidates=controls.filter(n=>n!==focused).map(n=>{const r=n.getBoundingClientRect(),x=r.left+r.width/2-ox,y=r.top+r.height/2-oy;return {n,x,y,score:(dx?Math.abs(x)+Math.abs(y)*3:Math.abs(y)+Math.abs(x)*2)};}).filter(c=>dx?c.x*dx>8:c.y*dy>8).sort((a,b)=>a.score-b.score);
+ const target=candidates[0]?.n;if(target){target.focus({preventScroll:true});if(target.classList.contains('game-card'))target.scrollIntoView({block:'nearest',inline:'nearest'});}
+}
+function back(){if($('link-dialog').open)return cancelLink();if($('settings-dialog').open)return $('settings-dialog').close();if($('search').value){$('search').value='';renderCards();return;}if(view==='pc')switchView('library');else $('games').querySelector('.selected')?.focus();}
+function accept(){if(document.activeElement?.classList.contains('game-card'))return playSelected();if(visibleControls().includes(document.activeElement))document.activeElement.click();else if(!$('play').disabled)playSelected();}
 document.addEventListener('keydown',e=>{
- if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
- if(['ArrowLeft','ArrowUp','ArrowRight','ArrowDown'].includes(e.key)){e.preventDefault();move(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1);}
- if(e.key==='Escape')back();
+ if(['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)){if(e.key==='Escape'){e.target.blur();back();}return;}
+ if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();navigate(e.key.slice(5).toLowerCase());}
+ if(e.key==='Enter'&&e.target.classList.contains('game-card')){e.preventDefault();playSelected();}
+ if(e.key==='Escape'){e.preventDefault();back();}
 });
-let old=[],lastMove=0;
 function controller(time){
- const pad=navigator.getGamepads?.()?.find(p=>p?.mapping==='standard');
- $('controller').textContent=pad?'Controller connected':'No controller detected';
+ const pad=Array.from(navigator.getGamepads?.()||[]).find(p=>p?.mapping==='standard'),label=pad?'Controller connected':'Touch & keyboard';if(label!==lastController){lastController=label;setText('controller',label);}
  if(pad){
-  const b=pad.buttons.map(x=>x.pressed),edge=i=>b[i]&&!old[i];
-  if(edge(0)){if(controls().includes(document.activeElement))document.activeElement.click();else if(!$('connect').disabled)$('connect').click();}
-  if(edge(1))back();
-  const d=b[12]||b[14]||pad.axes[0]<-.6||pad.axes[1]<-.6?-1:b[13]||b[15]||pad.axes[0]>.6||pad.axes[1]>.6?1:0;
-  if(d&&time-lastMove>210){move(d);lastMove=time;}old=b;
- }else old=[];
+  const b=pad.buttons.map(x=>x.pressed),edge=i=>b[i]&&!oldButtons[i];
+  if(edge(0))accept();if(edge(1))back();
+  if(edge(2)&&!$('settings-dialog').open&&!$('link-dialog').open){switchView('library');$('search').focus();}
+  if(edge(3)&&!$('settings-dialog').open&&!$('link-dialog').open)loadLibrary(true);
+  if(edge(9)&&!$('link-dialog').open){if($('settings-dialog').open)$('settings-dialog').close();else $('settings-dialog').showModal();}
+  if((edge(4)||edge(5))&&!$('settings-dialog').open&&!$('link-dialog').open)switchView(view==='library'?'pc':'library');
+  const direction=b[12]||pad.axes[1]<-.6?'up':b[13]||pad.axes[1]>.6?'down':b[14]||pad.axes[0]<-.6?'left':b[15]||pad.axes[0]>.6?'right':null;
+  if(direction&&time-lastMove>190){navigate(direction);lastMove=time;}oldButtons=b;
+ }else oldButtons=[];
  requestAnimationFrame(controller);
-}requestAnimationFrame(controller);
+}
+function clock(){setText('clock',new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));}
+window.orbit.onState(render);
+window.orbit.info().then(async info=>{selectedProfile=info.config.profile;$('profile').value=selectedProfile;setText('profile-summary',profileLabels[selectedProfile]);await refresh();}).catch(e=>toast(e.message));
+clock();setInterval(clock,30000);setInterval(refresh,15000);requestAnimationFrame(controller);

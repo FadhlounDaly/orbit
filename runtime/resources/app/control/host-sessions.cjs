@@ -41,8 +41,9 @@ class StreamObserver {
   }
 }
 class SessionManager {
-  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend)}){
+  constructor({backend,clock=Date.now,journal=null,display=new PreserveDisplay(),observer=new StreamObserver(backend),library=null,launcher=null}){
     this.backend=backend;this.clock=clock;this.journal=journal;this.display=display;this.observer=observer;
+    this.library=library;this.launcher=launcher;
     this.state='IDLE';this.current=null;this.error=null;this.tail=Promise.resolve();
   }
   serial(fn){const job=this.tail.then(fn);this.tail=job.catch(()=>{});return job;}
@@ -64,22 +65,26 @@ class SessionManager {
   });}
   snapshot(){return {state:this.state,error:this.error,session:this.current?{
     id:this.current.id,intent:this.current.intent,clientDeviceId:this.current.clientDeviceId,
-    targetType:'intent',targetId:this.current.intent,streamProfile:this.current.profile,
+    targetType:this.current.gameId?'game':'intent',targetId:this.current.gameId||this.current.intent,game:this.current.game||null,streamProfile:this.current.profile,
     displayPolicy:'preserve-physical',startedAt:this.current.startedAt,currentState:this.state}:null};}
   active(){return Boolean(this.current)||this.state!=='IDLE';}
   expired(){return this.current&&this.clock()-this.current.heartbeat>=45000;}
-  async start({intent,profile='balanced',resumeId},clientDeviceId,authorized=()=>true){return this.serial(async()=>{
+  async start({intent,profile='balanced',resumeId,gameId},clientDeviceId,authorized=()=>true){return this.serial(async()=>{
     if(!authorized())throw Object.assign(Error('Device trust was removed'),{status:401});
     const target=session(intent);
+    if(gameId!==undefined&&intent!=='desktop')throw conflict('Games use the Desktop stream');
+    if(gameId!==undefined&&(!this.library||!this.launcher))throw conflict('Game launching is unavailable on Zeiron');
     if(!STREAM_PROFILES[profile])throw conflict('Unsupported session profile');
     if(this.expired())await this.endInternal('heartbeat-expired');
     if(this.state==='ERROR')throw conflict('Restore Zeiron before starting another session');
     if(this.current){
-      if(resumeId!==this.current.id||intent!==this.current.intent||clientDeviceId!==this.current.clientDeviceId||profile!==this.current.profile)throw conflict('A session is already active');
+      if(resumeId!==this.current.id||intent!==this.current.intent||clientDeviceId!==this.current.clientDeviceId||profile!==this.current.profile||gameId!==this.current.gameId)throw conflict('A session is already active');
       this.current.heartbeat=this.clock();this.observer.reset();this.move('RECONNECTING');this.move('READY');
       return this.launchResponse(target);
     }
-    this.current={id:crypto.randomUUID(),clientDeviceId,intent,profile,heartbeat:this.clock(),startedAt:new Date(this.clock()).toISOString(),previousSystemState:null};
+    const game=gameId!==undefined?await this.library.resolve(gameId):null;
+    if(!authorized())throw Object.assign(Error('Device trust was removed'),{status:401});
+    this.current={...(game?{gameId:game.id}:{}),id:crypto.randomUUID(),clientDeviceId,intent,profile,heartbeat:this.clock(),startedAt:new Date(this.clock()).toISOString(),previousSystemState:null};
     this.error=null;this.move('PREPARING');
     try{
       this.current.previousSystemState=await this.display.snapshot();this.save();
@@ -87,11 +92,13 @@ class SessionManager {
       this.move('PREPARING_STREAM');
       const status=await this.backend.status();
       if(!status.running||status.healthy===false||!status.apps.some(a=>a.name===target.target))throw Error('This session is not ready on Zeiron');
+      if(!authorized())throw Object.assign(Error('Device trust was removed'),{status:401});
+      if(game)this.current.game={id:game.id,...await this.launcher.launch(game)};
       this.observer.reset();this.move('READY');return this.launchResponse(target);
     }catch(error){await this.endInternal(error.message);throw conflict(error.message);}
   });}
   launchResponse(target){return {id:this.current.id,intent:this.current.intent,target:target.target,
-    profile:this.current.profile,stream:STREAM_PROFILES[this.current.profile],hostSession:this.snapshot()};}
+    profile:this.current.profile,game:this.current.game||null,stream:STREAM_PROFILES[this.current.profile],hostSession:this.snapshot()};}
   async heartbeat(id,clientDeviceId){return this.serial(async()=>{
     if(this.expired()){await this.endInternal('heartbeat-expired');throw conflict('Session expired');}
     if(!this.current||this.current.id!==id||this.current.clientDeviceId!==clientDeviceId)throw conflict('Session expired');

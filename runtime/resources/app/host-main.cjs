@@ -1,10 +1,12 @@
 'use strict';
-const {app,BrowserWindow,ipcMain,session,safeStorage,shell}=require('electron');
+const {app,BrowserWindow,ipcMain,session,safeStorage,shell,nativeImage}=require('electron');
 const path=require('node:path');
 const fs=require('node:fs');
 const {HostBackend}=require('./host-backend.cjs');
 const {Registry}=require('./control/model.cjs');
 const {HostService}=require('./control/host-service.cjs');
+const {GameLibrary}=require('./control/game-library.cjs');
+const {StoreArtworkCache}=require('./control/game-artwork.cjs');
 const root=path.resolve(__dirname,'../../..');
 app.setName('Orbit Host');
 const interfaceData=path.join(root,'data','host','interface');
@@ -18,7 +20,16 @@ else {
   app.whenReady().then(()=>{
     backend=new HostBackend({root,vault:safeStorage});
     const registry=new Registry(path.join(root,'data','host','devices.bin'),'host',safeStorage);
-    control=new HostService({backend,registry,journal:path.join(root,'data','host','session-journal.json')});
+    const artworkCache=new Map();
+    const library=new GameLibrary({profilesFile:path.join(root,'data/host/library-profiles.json'),artworkCache:new StoreArtworkCache({dir:path.join(root,'data/host/library-artwork')}),artwork:(file,{hero=false}={})=>{
+      const stat=fs.statSync(file);if(stat.size>12*1024*1024)return null;
+      const stamp=stat.mtimeMs,key=file+':'+stamp+':'+hero;
+      if(artworkCache.has(key))return artworkCache.get(key);
+      const image=nativeImage.createFromPath(file);if(image.isEmpty())return null;
+      const data='data:image/jpeg;base64,'+image.resize({width:hero?960:200,quality:'good'}).toJPEG(hero?60:58).toString('base64');
+      if(artworkCache.size>500)artworkCache.clear();artworkCache.set(key,data);return data;
+    }});
+    control=new HostService({backend,registry,library,journal:path.join(root,'data','host','session-journal.json')});
     const start=async()=>{
       // Existing certificates let the command center stay available if the engine is offline.
       if(fs.existsSync(backend.paths().cert))await control.start();
@@ -34,10 +45,11 @@ else {
       if(event.sender!==win.webContents || event.senderFrame!==win.webContents.mainFrame) throw new Error('Unsupported caller');
       return fn(...args);
     });
-    handle('host:status',async()=>({...await backend.status(),linked:Boolean(registry.data.client),controlOnline:Boolean(control.server),devices:control.devices.list(),hostSession:control.sessions.snapshot()}));
+    handle('host:status',async()=>({...await backend.status(),linked:Boolean(registry.data.client),controlOnline:Boolean(control.server),devices:control.devices.list(),pairingRequests:control.devices.requests(),hostSession:control.sessions.snapshot()}));
     handle('host:start',start);
     handle('host:stop',async()=>{await control.sessions.shutdown();return backend.stop();});
-    handle('host:link',()=>control.invitation());
+    handle('host:pair',input=>control.approvePairing(input));
+    handle('host:dismiss-pairing',challenge=>{const p=control.devices.pending;return control.devices.cancelRequest({challenge},p?.address);});
     handle('host:revoke',id=>{control.revoke(id);return {removed:true};});
     handle('host:steam',value=>backend.setSteam(value));
     handle('host:diagnostics',()=>shell.openPath(backend.dir));

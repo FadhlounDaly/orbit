@@ -15,6 +15,7 @@ const EDGES={
 class Machine {
  constructor(notify=()=>{}){this.state='UNKNOWN';this.reason='';this.notify=notify;}
  move(state,reason=''){
+  if(state===this.state&&reason===this.reason)return this.snapshot();
   if(state!==this.state && !EDGES[this.state]?.includes(state))throw Error('Invalid connection transition '+this.state+' → '+state);
   this.state=state;this.reason=reason;this.notify(this.snapshot());return this.snapshot();
  }
