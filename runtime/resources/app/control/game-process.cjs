@@ -3,11 +3,11 @@ const path=require('node:path');
 const {execFile}=require('node:child_process');
 class WindowsGameProcesses{
  constructor({execute=execFile,platform=process.platform}={}){this.execute=execute;this.platform=platform;}
- run(script){return new Promise((resolve,reject)=>this.execute(path.join(process.env.SystemRoot||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:10000,maxBuffer:2*1024*1024},(e,out)=>{if(e)return reject(Error('Could not inspect or close the game on Zeiron'));try{resolve(JSON.parse(out||'null'));}catch{reject(Error('Invalid game process response'));}}));}
+ run(script,timeout=10000){return new Promise((resolve,reject)=>this.execute(path.join(process.env.SystemRoot||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout,maxBuffer:2*1024*1024},(e,out)=>{if(e)return reject(Error('Could not inspect or close the game on Zeiron'));try{resolve(JSON.parse(out||'null'));}catch{reject(Error('Invalid game process response'));}}));}
  async list(){if(this.platform!=='win32')return [];return (await this.run("$ErrorActionPreference='Stop'; @(@(Get-Process | Where-Object {$_.Path} | ForEach-Object { @{pid=$_.Id;exe=$_.Path;started=$_.StartTime.ToUniversalTime().Ticks.ToString();window=($_.MainWindowHandle -ne 0)} })) | ConvertTo-Json -Compress"))||[];}
  async close(item){
   if(!Number.isSafeInteger(item.pid)||!/^\d+$/.test(item.started))throw Error('Invalid game process identity');
-  const result=await this.run(`$ErrorActionPreference='Stop'; $p=Get-Process -Id ${item.pid} -ErrorAction SilentlyContinue; if(!$p){'true'; exit}; if($p.StartTime.ToUniversalTime().Ticks.ToString() -ne '${item.started}'){throw 'Game process identity changed'}; if(!$p.CloseMainWindow()){throw 'Game has no window to close'}; $p.WaitForExit(3000) | ConvertTo-Json -Compress`);
+  const result=await this.run(`$ErrorActionPreference='Stop'; $p=Get-Process -Id ${item.pid} -ErrorAction SilentlyContinue; if(!$p){'true'; exit}; if($p.StartTime.ToUniversalTime().Ticks.ToString() -ne '${item.started}'){throw 'Game process identity changed'}; if(!$p.CloseMainWindow()){throw 'Game has no window to close'}; $p.WaitForExit(12000) | ConvertTo-Json -Compress`,15000);
   if(!result)throw Error('The game is still open. Resolve its exit or save dialog and try Close game again.');
  }
 }

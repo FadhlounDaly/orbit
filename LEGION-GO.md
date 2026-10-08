@@ -76,3 +76,11 @@ Yuzu's selected Player 1 controller profile replaces gameplay keyboard mappings.
 ### Orbit 0.10 host overview
 
 **Your PC** shows Zeiron's CPU model and load, total and used RAM, primary graphics card and driver, streaming readiness, uptime, and control-request response time. It refreshes in place with the existing 15-second status poll. Offline information is clearly labeled last known, and live measurements are unavailable. The response time measures Orbit's control request, not video latency. GPU load, GPU memory, and temperatures are not fabricated; live GPU usage is explicitly unavailable. Graphics inventory uses a cached read-only Windows query and requires no administrator access. Hardware information is available only to a linked handheld.
+
+### Orbit 0.11 launch and exit cover
+
+Game sessions place a non-interactive Orbit cover behind the game on Zeiron. It is created before the game launches, follows monitor resolution changes, and remains during game shutdown until Sunshine reports the client disconnected. It never takes controller or keyboard focus. Explicit Desktop sessions clear the cover. Other applications or system dialogs can still appear above this ordinary window; this is a transition cover, not isolated game-window capture.
+
+Close game allows up to 12 seconds for a normal Windows exit, while keeping the stream available for confirmation dialogs. It does not force-kill the game.
+
+The LEGION-GO Hyper-V VM was updated and tested with the production launcher, native Skyrim streaming, and Close game returning to the library. The VM requires a signed-in interactive Windows desktop. Its temporary Orbit link replaces the physical handheld's link; link the physical Legion Go again when returning to it. Zeiron's `Orbit-VM-Simulation-TCP` and `Orbit-VM-Simulation-UDP` firewall rules are limited to Orbit's Sunshine executable and the VM's current Default Switch address. Remove these two rules when VM simulation is finished; update their addresses if Hyper-V changes the VM subnet. VM testing does not establish physical controller behavior or prove zero desktop frames across all games and system dialogs.

@@ -1,9 +1,10 @@
 'use strict';
-const {app,BrowserWindow,ipcMain,session,safeStorage,shell,nativeImage}=require('electron');
+const {app,BrowserWindow,ipcMain,session,safeStorage,shell,nativeImage,screen}=require('electron');
 const path=require('node:path');
 const fs=require('node:fs');
 const {HostBackend}=require('./host-backend.cjs');
 const {Registry}=require('./control/model.cjs');
+const {GameCover}=require('./control/game-cover.cjs');
 const {HostService}=require('./control/host-service.cjs');
 const {GameLibrary}=require('./control/game-library.cjs');
 const {GameGraphics}=require('./control/game-graphics.cjs');
@@ -31,7 +32,7 @@ else {
       const data='data:image/jpeg;base64,'+image.resize({width:hero?960:200,quality:'good'}).toJPEG(hero?60:58).toString('base64');
       if(artworkCache.size>500)artworkCache.clear();artworkCache.set(key,data);return data;
     }});
-    control=new HostService({backend,registry,library,display:new WindowsDisplay(),graphics:new GameGraphics({skyrimPrefs:path.join(app.getPath('documents'),'My Games/Skyrim Special Edition/SkyrimPrefs.ini')}),journal:path.join(root,'data','host','session-journal.json')});
+    control=new HostService({backend,registry,library,cover:new GameCover({BrowserWindow,screen,backend}),display:new WindowsDisplay(),graphics:new GameGraphics({skyrimPrefs:path.join(app.getPath('documents'),'My Games/Skyrim Special Edition/SkyrimPrefs.ini')}),journal:path.join(root,'data','host','session-journal.json')});
     const start=async()=>{
       // Existing certificates let the command center stay available if the engine is offline.
       if(fs.existsSync(backend.paths().cert))await control.start();
