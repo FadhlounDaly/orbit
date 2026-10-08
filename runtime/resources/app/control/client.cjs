@@ -18,7 +18,7 @@ class ClientCoordinator{
  snapshot(){
   return {...this.machine.snapshot(),name:'Zeiron',reachable:!['UNKNOWN','DISCOVERING','OFFLINE'].includes(this.machine.state),
    trusted:Boolean(this.registry.data.host),paired:['READY','CONNECTING','STREAMING','RECONNECTING'].includes(this.machine.state),
-   sessions:this.sessions.map(s=>({...s})),session:this.session?{id:this.session.id,intent:this.session.intent,profile:this.session.profile,game:this.session.game||null}:null,hostOnline:this.hostOnline,
+   sessions:this.sessions.map(s=>({...s})),session:this.session?{id:this.session.id,intent:this.session.intent,profile:this.session.profile,gameId:this.session.gameId||null,game:this.session.game||null}:null,hostOnline:this.hostOnline,
    hostInfo:this.hostInfo,profile:this.profile,device:this.registry.view().device,hosts:this.discovered.map(h=>({...h})),pairing:this.pairing?{...this.pairing}:null};
  }
  async locate(){

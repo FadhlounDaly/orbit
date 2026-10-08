@@ -167,3 +167,4 @@ test('queued start rechecks device authorization before preparation',async t=>{
  authorized=false;release();await assert.rejects(pending,e=>e.status===401);
  assert.equal(manager.state,'IDLE');assert.equal(manager.current,null);
 });
+test('Desktop ownership cannot close applications even when a client requests closeGame',async()=>{const manager=new SessionManager({backend:{status:async()=>({running:true,apps:[{name:'Desktop'}]})},observer:{reset(){},read:()=>null},launcher:{closeGame:()=>assert.fail('Desktop owns no game process')}});const lease=await manager.start({intent:'desktop'},'vm');await manager.end(lease.id,'vm',true);assert.equal(manager.state,'IDLE');});

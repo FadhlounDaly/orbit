@@ -92,8 +92,9 @@ function renderHost(s){
 }
 function render(s){
  const old=current;current=s;renderHost(s);
- $('stream-transition').hidden=!ACTIVE.has(s.state);setText('transition-title',s.session?.game?.name||selected()?.name||'Your PC');setText('transition-description',s.state==='RECONNECTING'?'Restoring your connection…':s.state==='STREAMING'?'Your game is ready. Enjoy.':'Preparing your handheld session…');
- setText('status',labels[s.state]||'Checking');$('status-dot').className='status-dot '+(s.state==='READY'||s.state==='STREAMING'?'online':s.hostOnline?'attention':'');
+ const gameSession=Boolean(s.session?.gameId||s.session?.game),sessionName=gameSession?(s.session?.game?.name||library.find(g=>g.id===s.session?.gameId)?.name||'Game'):(s.session?.intent==='steam'?'Steam Big Picture':'Desktop');
+ $('stream-transition').hidden=!ACTIVE.has(s.state);$('stream-transition').dataset.mode=gameSession?'game':'desktop';setText('transition-title',sessionName);setText('transition-mode',gameSession?'GAME SESSION · FROM ZEIRON':'DESKTOP MODE · FROM ZEIRON');setText('transition-description',s.state==='RECONNECTING'?'Reconnecting to '+sessionName+'…':s.state==='STREAMING'?(gameSession?'Your game is ready. Enjoy.':sessionName+' is ready. You’re in control.'):(gameSession?'Opening '+sessionName+' on Zeiron…':'Opening '+sessionName+' and fitting it to your screen…'));
+ setText('status',s.state==='STREAMING'&&!gameSession?sessionName+' active':labels[s.state]||'Checking');$('status-dot').className='status-dot '+(s.state==='READY'||s.state==='STREAMING'?'online':s.hostOnline?'attention':'');
  setText('connection-detail',s.trusted?(s.state==='READY'?'Linked to Zeiron. Ready to play.':s.reason||'Your device is linked to Zeiron.'):s.reason||'Link Zeiron once to play your PC games.');
  setText('pc-description',s.state==='READY'?'Linked, online, and ready when you are.':s.reason||'Your connected PC, within reach.');
  $('pc-desktop').disabled=busy||active()||s.state!=='READY';$('steam').disabled=busy||active()||s.state!=='READY'||!s.sessions?.some(x=>x.id==='steam');

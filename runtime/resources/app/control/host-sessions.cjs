@@ -96,7 +96,7 @@ class SessionManager {
       const status=await this.backend.status();
       if(!status.running||status.healthy===false||!status.apps.some(a=>a.name===target.target))throw Error('This session is not ready on Zeiron');
       if(!authorized())throw Object.assign(Error('Device trust was removed'),{status:401});
-      await this.cover?.prepare(game);
+      await this.cover?.prepare(game,{intent});
       if(game)this.current.game={id:game.id,...await this.launcher.launch(game)};
       this.observer.reset();this.move('READY');return this.launchResponse(target);
     }catch(error){await this.endInternal(error.message);throw conflict(error.message);}

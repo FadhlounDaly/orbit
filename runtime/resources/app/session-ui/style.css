@@ -2,4 +2,4 @@
 
 label{display:block;font-size:13px;margin:12px 0 8px}output{float:right;color:#c0ed61}input,select{width:100%;accent-color:#c0ed61}select{font:inherit;padding:10px;border-radius:9px;background:#34392f;color:inherit;border:1px solid #68715a}input:focus,select:focus,button:focus{outline:2px solid #c0ed61;outline-offset:2px}#confirm p{font-size:14px}.description{margin-top:9px}
 
-section{max-height:470px;overflow-y:auto}button:focus,input:focus,select:focus{scroll-margin:12px}
+section{max-height:min(470px,calc(100vh - 58px));overflow-y:auto}button:focus,input:focus,select:focus{scroll-margin:12px}

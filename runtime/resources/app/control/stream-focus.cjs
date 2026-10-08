@@ -27,6 +27,6 @@ public static class OrbitStreamFocus {
 }
 '@;[OrbitStreamFocus]::Focus([uint32]$p.Id)|ConvertTo-Json`;
 
- return new Promise(resolve=>execute(path.join(process.env.SystemRoot||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:3000,maxBuffer:16384},(e,out)=>resolve(!e&&out.trim()==='true')));
+ return new Promise(resolve=>execute(path.join(process.env.SystemRoot||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{windowsHide:true,timeout:8000,maxBuffer:16384},(e,out)=>resolve(!e&&out.trim()==='true')));
 }
 module.exports={focusStream};

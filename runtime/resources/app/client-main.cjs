@@ -45,7 +45,7 @@ else {
    if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('Unsupported caller');
    return fn(...args);
   });
-  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.12.0'}));
+  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.13.0'}));
   handle('orbit:status',()=>coordinator.refresh());
   handle('orbit:discover',()=>coordinator.discover());
   handle('orbit:select-host',id=>coordinator.selectHost(id));

@@ -15,12 +15,12 @@ class SessionShell{
   this.window.loadFile(path.join(this.root,'session-ui/index.html'));
  }
  state(snapshot){
-  const wasActive=this.active;this.game=Boolean(snapshot.session?.gameId||snapshot.session?.game);this.active=snapshot.state==='STREAMING';this.activeProfile=snapshot.session?.profile;this.title=snapshot.session?.game?.name||(snapshot.session?.intent==='steam'?'Steam Big Picture':'Your PC');
+  const wasActive=this.active;this.game=Boolean(snapshot.session?.gameId||snapshot.session?.game);this.active=snapshot.state==='STREAMING';this.activeProfile=snapshot.session?.profile;this.title=snapshot.session?.game?.name||(snapshot.session?.intent==='steam'?'Steam Big Picture':'Desktop');
   if(this.active){this.ensure();this.position();if(!this.expanded)this.window.showInactive();if(!wasActive)this.globalShortcut.register('CommandOrControl+Alt+O',()=>this.toggle());}
   else{this.window?.hide();this.expanded=false;this.busy=false;this.audioState=null;this.globalShortcut.unregister('CommandOrControl+Alt+O');}
   this.render();
  }
- position(){if(!this.window)return;const {x,y,width}=this.screen.getPrimaryDisplay().bounds;const w=this.expanded?410:176,h=this.expanded?530:54;this.window.setBounds({x:x+width-w-18,y:y+16,width:w,height:h});}
+ position(){if(!this.window)return;const {x,y,width,height}=this.screen.getPrimaryDisplay().bounds;const w=Math.min(this.expanded?410:176,width-36),h=Math.min(this.expanded?530:54,height-32);this.window.setBounds({x:x+width-w-18,y:y+16,width:w,height:h});}
  render(){this.window?.webContents.send('orbit:session-state',{title:this.title,game:this.game,expanded:this.expanded,busy:this.busy,audio:this.audioState,profile:this.profile,activeProfile:this.activeProfile});}
  toggle(){if(!this.active||this.busy)return;this.expanded=!this.expanded;this.window.setFocusable(this.expanded);this.position();this.render();if(this.expanded){this.window.show();this.window.focus();this.volume().catch(()=>{});}else this.window.showInactive();return {expanded:this.expanded};}
  resume(){if(!this.expanded)return;this.expanded=false;this.window.setFocusable(false);this.window.blur();this.position();this.render();this.window.showInactive();this.onResume();}
