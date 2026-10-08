@@ -1,0 +1,10 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),{execFile}=require('node:child_process');
+const unavailable=()=>({battery:{available:false,reason:'Battery unavailable'},wifi:{available:false,reason:'Wi-Fi unavailable'},brightness:{available:false,reason:'Brightness unavailable'},volume:{available:false,reason:'Device volume unavailable'}});
+class HandheldControls{
+ constructor({execute=execFile,platform=process.platform}={}){Object.assign(this,{execute,platform});this.tail=Promise.resolve();}
+ read(){return this.run('read');}
+ set(kind,percent){if(!['brightness','volume'].includes(kind)||!Number.isInteger(percent)||percent<0||percent>100)return Promise.reject(Error('Choose brightness or volume from 0 to 100'));return this.run(kind,percent);}
+ run(action,level=-1){if(!['read','brightness','volume'].includes(action)||(action!=='read'&&(!Number.isInteger(level)||level<0||level>100)))return Promise.reject(Error('Invalid device setting'));const job=this.tail.then(()=>{if(this.platform!=='win32'){if(action!=='read')throw Error('Device controls require Windows');return unavailable();}const source=`$OrbitAction='${action}';$OrbitLevel=${level};\n`+fs.readFileSync(path.join(__dirname,'handheld.ps1'),'utf8');return new Promise((resolve,reject)=>this.execute(path.join(process.env.SystemRoot||'C:\\Windows','System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-EncodedCommand',Buffer.from(source,'utf16le').toString('base64')],{windowsHide:true,shell:false,timeout:15000,maxBuffer:65536},(e,out)=>{if(e)return reject(Error(action==='read'?'This device’s settings are unavailable':'Could not change this device’s '+action));try{const value=JSON.parse(out);for(const key of ['battery','wifi','brightness','volume']){if(typeof value[key]?.available!=='boolean')throw Error();if(value[key].available&&key!=='wifi'&&(!Number.isInteger(value[key].percent)||value[key].percent<0||value[key].percent>100))throw Error();}resolve(value);}catch{reject(Error('Invalid device settings response'));}}));});this.tail=job.catch(()=>{});return job;}
+}
+module.exports={HandheldControls,unavailable};

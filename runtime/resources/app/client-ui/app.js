@@ -152,6 +152,7 @@ for(const name of ['games','xbox','steam','apps'])$('filter-'+name).onclick=()=>
 $('search').oninput=renderCards;$('refresh-library').onclick=()=>loadLibrary(true);$('retry').onclick=()=>loadLibrary(true);
 $('link').onclick=()=>action(startLink);$('settings-link').onclick=$('link').onclick;$('cancel-link').onclick=cancelLink;
 $('link-dialog').addEventListener('cancel',e=>{e.preventDefault();cancelLink();});
+$('quick-settings').onclick=()=>window.orbit.quickSettings().catch(e=>toast(e.message));
 $('settings').onclick=()=>$('settings-dialog').showModal();$('host-settings').onclick=$('settings').onclick;$('close-settings').onclick=()=>$('settings-dialog').close();
 $('discover').onclick=()=>action(()=>window.orbit.discoverHosts());$('settings-discover').onclick=()=>{$('settings-dialog').close();switchView('pc');$('discover').onclick();};
 $('profile').onchange=()=>action(async()=>{const value=await window.orbit.saveConfig({profile:$('profile').value});selectedProfile=value.profile;setText('profile-summary',profileLabels[selectedProfile]);return value;});
@@ -180,7 +181,7 @@ function controller(time){
   if(edge(0))accept();if(edge(1))back();
   if(edge(2)&&!$('settings-dialog').open&&!$('link-dialog').open){switchView('library');$('search').focus();}
   if(edge(3)&&!$('settings-dialog').open&&!$('link-dialog').open)loadLibrary(true);
-  if(edge(9)&&!$('link-dialog').open){if($('settings-dialog').open)$('settings-dialog').close();else $('settings-dialog').showModal();}
+  if(edge(9)&&!$('link-dialog').open){if($('settings-dialog').open)$('settings-dialog').close();window.orbit.quickSettings().catch(e=>toast(e.message));}
   if((edge(4)||edge(5))&&!$('settings-dialog').open&&!$('link-dialog').open)switchView(view==='library'?'pc':'library');
   const direction=b[12]||pad.axes[1]<-.6?'up':b[13]||pad.axes[1]>.6?'down':b[14]||pad.axes[0]<-.6?'left':b[15]||pad.axes[0]>.6?'right':null;
   if(direction&&time-lastMove>190){navigate(direction);lastMove=time;}oldButtons=b;

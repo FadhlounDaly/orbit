@@ -5,6 +5,7 @@ const {Registry}=require('./control/model.cjs');
 const {MoonlightAdapter,PROFILES}=require('./control/moonlight.cjs');
 const {ClientCoordinator}=require('./control/client.cjs');
 const {SessionShell}=require('./control/session-shell.cjs');
+const {HandheldControls}=require('./control/handheld.cjs');
 const {StreamAudio}=require('./control/stream-audio.cjs');
 const {focusStream}=require('./control/stream-focus.cjs');
 const root=path.resolve(__dirname,'../../..'),data=path.join(root,'data','launcher');
@@ -40,12 +41,13 @@ else {
    sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
   const saveProfile=profile=>{if(!PROFILES[profile])throw Error('Invalid Orbit preference');config={profile};coordinator.profile=profile;fs.writeFileSync(path.join(data,'config.json'),JSON.stringify({...old,profile},null,2));return config;};
-  sessionShell=new SessionShell({BrowserWindow,screen,ipcMain,globalShortcut,onEnd:()=>coordinator.disconnect(),onResume:()=>focusStream(adapter),audio:new StreamAudio({adapter}),profile:config.profile,onProfile:saveProfile});
+  sessionShell=new SessionShell({BrowserWindow,screen,ipcMain,globalShortcut,onEnd:()=>coordinator.disconnect(),onResume:()=>focusStream(adapter),audio:new StreamAudio({adapter}),device:new HandheldControls(),onReturn:()=>{win.restore();win.show();win.focus();},profile:config.profile,onProfile:saveProfile});
   const handle=(name,fn)=>ipcMain.handle(name,async(event,...args)=>{
    if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('Unsupported caller');
    return fn(...args);
   });
-  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.13.0'}));
+  handle('orbit:quick-settings',()=>sessionShell.open());
+  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.14.0'}));
   handle('orbit:status',()=>coordinator.refresh());
   handle('orbit:discover',()=>coordinator.discover());
   handle('orbit:select-host',id=>coordinator.selectHost(id));

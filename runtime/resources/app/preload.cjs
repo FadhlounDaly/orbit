@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 function listener(name,fn){const wrapped=(_,data)=>fn(data);ipcRenderer.on(name,wrapped);return()=>ipcRenderer.removeListener(name,wrapped);}
 contextBridge.exposeInMainWorld('orbit',{
+ quickSettings:()=>ipcRenderer.invoke('orbit:quick-settings'),
  info:()=>ipcRenderer.invoke('orbit:info'),
  getStatus:()=>ipcRenderer.invoke('orbit:status'),
  saveConfig:value=>ipcRenderer.invoke('orbit:config',value),
