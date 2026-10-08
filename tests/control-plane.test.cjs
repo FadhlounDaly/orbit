@@ -183,3 +183,8 @@ test('a failed stream runtime ends the host lease before another Play attempt',a
  await assert.rejects(c.play('steam:123'),/runtime failed/);assert.equal(c.session,null);
  assert.equal(calls.find(r=>r.endpoint==='/sessions/end').body.id,'lease');assert.equal(c.machine.state,'ERROR');
 });
+
+test('quality preference changes keep the active session profile during recovery',async t=>{
+ const {c,adapter}=client(t);const requests=[],profiles=[];const original=c.request;c.request=async args=>{if(args.endpoint==='/sessions/start')requests.push(args.body);return original(args);};adapter.start=(_address,_target,profile)=>profiles.push(profile);
+ await c.connect();c.profile='sharp';await c.launch();assert.equal(c.session.profile,'balanced');assert.equal(c.snapshot().session.profile,'balanced');assert.deepEqual(profiles,['balanced','balanced']);assert.equal(requests.at(-1).profile,'balanced');await c.disconnect();await c.connect();assert.equal(c.session.profile,'sharp');
+});

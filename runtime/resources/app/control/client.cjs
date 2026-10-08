@@ -18,7 +18,7 @@ class ClientCoordinator{
  snapshot(){
   return {...this.machine.snapshot(),name:'Zeiron',reachable:!['UNKNOWN','DISCOVERING','OFFLINE'].includes(this.machine.state),
    trusted:Boolean(this.registry.data.host),paired:['READY','CONNECTING','STREAMING','RECONNECTING'].includes(this.machine.state),
-   sessions:this.sessions.map(s=>({...s})),session:this.session?{id:this.session.id,intent:this.session.intent,game:this.session.game||null}:null,hostOnline:this.hostOnline,
+   sessions:this.sessions.map(s=>({...s})),session:this.session?{id:this.session.id,intent:this.session.intent,profile:this.session.profile,game:this.session.game||null}:null,hostOnline:this.hostOnline,
    hostInfo:this.hostInfo,profile:this.profile,device:this.registry.view().device,hosts:this.discovered.map(h=>({...h})),pairing:this.pairing?{...this.pairing}:null};
  }
  async locate(){
@@ -177,7 +177,7 @@ class ClientCoordinator{
   if(this.closed||generation!==this.generation)throw Error('Connection cancelled');
   if(this.machine.state!=='READY')throw Error(this.machine.reason||'Zeiron is not ready');
   this.userStopped=false;this.retries=0;this.failures=0;
-  this.session={id:null,intent,...(gameId?{gameId}: {})};this.machine.move('CONNECTING');
+  this.session={id:null,intent,profile:this.profile,...(gameId?{gameId}: {})};this.machine.move('CONNECTING');
   try{await this.launch();}
   catch(e){
    const current=this.session;this.session=null;++this.generation;
@@ -189,10 +189,10 @@ class ClientCoordinator{
  }
  async launch(){
   const active=this.session,generation=++this.generation;
-  const lease=await this.remote('/sessions/start','POST',{intent:active.intent,resumeId:active.id,profile:this.profile,...(active.gameId?{gameId:active.gameId}: {})});
+  const lease=await this.remote('/sessions/start','POST',{intent:active.intent,resumeId:active.id,profile:active.profile||this.profile,...(active.gameId?{gameId:active.gameId}: {})});
   if(this.closed||this.session!==active){try{await this.remote('/sessions/end','POST',{id:lease.id});}catch{}return;}
   active.id=lease.id;active.game=lease.game||null;active.started=Date.now();
-  this.adapter.start(this.address,lease.target,lease.profile||this.profile,event=>this.exited(event,generation));
+  this.adapter.start(this.address,lease.target,lease.profile||active.profile||this.profile,event=>this.exited(event,generation));
   this.monitor(generation);
  }
  monitor(generation){

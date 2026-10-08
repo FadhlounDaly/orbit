@@ -5,6 +5,8 @@ const {Registry}=require('./control/model.cjs');
 const {MoonlightAdapter,PROFILES}=require('./control/moonlight.cjs');
 const {ClientCoordinator}=require('./control/client.cjs');
 const {SessionShell}=require('./control/session-shell.cjs');
+const {StreamAudio}=require('./control/stream-audio.cjs');
+const {focusStream}=require('./control/stream-focus.cjs');
 const root=path.resolve(__dirname,'../../..'),data=path.join(root,'data','launcher');
 fs.mkdirSync(data,{recursive:true});
 app.setPath('userData',data);app.setPath('sessionData',path.join(data,'browser'));
@@ -25,7 +27,7 @@ else {
    win.webContents.send('orbit:state',s);
    sessionShell?.state(s);clearTimeout(handoffTimer);
    if(['CONNECTING','RECONNECTING'].includes(s.state)){win.setAlwaysOnTop(true,'screen-saver');win.restore();win.show();}
-   if(s.state==='STREAMING'){handoffTimer=setTimeout(()=>{if(coordinator.snapshot().state==='STREAMING'){win.setAlwaysOnTop(false);win.minimize();}},900);}
+   if(s.state==='STREAMING'){handoffTimer=setTimeout(()=>{if(coordinator.snapshot().state==='STREAMING'){win.setAlwaysOnTop(false);win.minimize();if(!sessionShell?.expanded)focusStream(adapter);}},900);}
    if(!['CONNECTING','STREAMING','RECONNECTING'].includes(s.state))win.setAlwaysOnTop(false);
    if(['READY','ERROR','OFFLINE','RECONNECTING'].includes(s.state)&&['CONNECTING','STREAMING','RECONNECTING'].includes(previous)){
     win.restore();win.show();win.focus();
@@ -37,12 +39,13 @@ else {
    title:'Orbit',autoHideMenuBar:true,show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),
    sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   win.webContents.setWindowOpenHandler(()=>({action:'deny'}));win.webContents.on('will-navigate',e=>e.preventDefault());
-  sessionShell=new SessionShell({BrowserWindow,screen,ipcMain,globalShortcut,onEnd:()=>coordinator.disconnect()});
+  const saveProfile=profile=>{if(!PROFILES[profile])throw Error('Invalid Orbit preference');config={profile};coordinator.profile=profile;fs.writeFileSync(path.join(data,'config.json'),JSON.stringify({...old,profile},null,2));return config;};
+  sessionShell=new SessionShell({BrowserWindow,screen,ipcMain,globalShortcut,onEnd:()=>coordinator.disconnect(),onResume:()=>focusStream(adapter),audio:new StreamAudio({adapter}),profile:config.profile,onProfile:saveProfile});
   const handle=(name,fn)=>ipcMain.handle(name,async(event,...args)=>{
    if(!win||event.sender!==win.webContents||event.senderFrame!==win.webContents.mainFrame)throw Error('Unsupported caller');
    return fn(...args);
   });
-  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.11.0'}));
+  handle('orbit:info',()=>({simulator:false,config,platform:process.platform,version:'0.12.0'}));
   handle('orbit:status',()=>coordinator.refresh());
   handle('orbit:discover',()=>coordinator.discover());
   handle('orbit:select-host',id=>coordinator.selectHost(id));
@@ -55,10 +58,7 @@ else {
   handle('orbit:disconnect',()=>coordinator.disconnect());
   handle('orbit:config',input=>{
    if(!input||Object.keys(input).length!==1||!PROFILES[input.profile])throw Error('Invalid Orbit preference');
-   config={profile:input.profile};coordinator.profile=config.profile;
-   // Preserve legacy address for existing installations; keep credentials in the encrypted registry.
-   fs.writeFileSync(path.join(data,'config.json'),JSON.stringify({...old,profile:config.profile},null,2));
-   return config;
+   const result=saveProfile(input.profile);sessionShell.profile=input.profile;sessionShell.render();return result;
   });
   handle('orbit:fullscreen',()=>{win.setFullScreen(!win.isFullScreen());return win.isFullScreen();});
   handle('orbit:quit',()=>app.quit());

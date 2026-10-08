@@ -28,7 +28,7 @@ class MoonlightAdapter{
   if(!['Desktop','Steam Big Picture'].includes(target)||!PROFILES[profile])throw Error('Unsupported session');
   const [resolution,fps,bitrate]=PROFILES[profile];
   const child=this.spawnProcess(this.exe,['stream',address,target,'--resolution',resolution,'--fps',fps,'--bitrate',bitrate,
-   '--display-mode','borderless','--multi-controller','--background-gamepad','--audio-config','stereo','--no-quit-after'],
+   '--display-mode','borderless','--multi-controller','--no-background-gamepad','--audio-config','stereo','--no-quit-after'],
    {cwd:this.cwd,shell:false,windowsHide:false,stdio:'ignore'});
   this.child=child;
   let finished=false;
